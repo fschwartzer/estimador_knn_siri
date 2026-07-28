@@ -13,7 +13,7 @@ APP_NAME = "estimador_knn_siri"
 APP_EDITION = "LITE 1.5"
 CORE_VERSION = "6.1.3"
 
-# Parâmetros internos: não ficam expostos ao usuário da edição LITE.
+# Parâmetros internos: não ficam expostos ao usuário.
 MIN_K = 7
 MAX_K = 30
 MIN_EFFECTIVE_NEIGHBORS = 5.0
@@ -1228,7 +1228,7 @@ mapping, missing_fields = build_mapping(df)
 
 if mapping is None:
     st.error(
-        "A planilha não possui todos os campos necessários para a edição LITE."
+        "A planilha não possui todos os campos necessários."
     )
     st.write("Campos não identificados: " + ", ".join(missing_fields) + ".")
     st.caption(
