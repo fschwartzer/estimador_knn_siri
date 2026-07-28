@@ -7,9 +7,14 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+try:
+    import pydeck as pdk
+except ImportError:
+    pdk = None
+
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.3"
+APP_EDITION = "LITE 1.4"
 CORE_VERSION = "6.1.3"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -744,6 +749,301 @@ def make_unique_column_names(columns) -> list[str]:
     return result
 
 
+
+def first_named_series(df: pd.DataFrame, column_name: str) -> pd.Series:
+    """
+    Retorna a primeira coluna com o nome solicitado.
+
+    A proteção é necessária para planilhas que eventualmente contenham
+    cabeçalhos repetidos.
+    """
+    matches = np.flatnonzero(np.asarray(df.columns, dtype=str) == str(column_name))
+    if matches.size == 0:
+        return pd.Series(index=df.index, dtype=float)
+    return df.iloc[:, int(matches[0])]
+
+
+def coordinate_to_numeric(series: pd.Series) -> pd.Series:
+    """
+    Converte coordenadas numéricas e textos com vírgula decimal.
+    """
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce")
+
+    cleaned = (
+        series.astype("string")
+        .str.strip()
+        .str.replace(r"\s+", "", regex=True)
+        .str.replace(",", ".", regex=False)
+    )
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
+def calculate_map_zoom(points: pd.DataFrame) -> float:
+    """
+    Estima um zoom legível a partir da dispersão espacial dos pontos.
+    """
+    if points.empty or len(points) == 1:
+        return 15.0
+
+    lat_span = float(points["latitude"].max() - points["latitude"].min())
+    lon_span = float(points["longitude"].max() - points["longitude"].min())
+    span = max(lat_span, lon_span)
+
+    if span <= 0.002:
+        return 15.5
+    if span <= 0.005:
+        return 14.5
+    if span <= 0.010:
+        return 13.8
+    if span <= 0.030:
+        return 12.5
+    if span <= 0.080:
+        return 11.3
+    if span <= 0.200:
+        return 10.2
+    if span <= 0.500:
+        return 9.0
+    return 7.8
+
+
+def build_map_data(
+    neighbors: pd.DataFrame,
+    latitude_column: str,
+    longitude_column: str,
+    target_latitude: float,
+    target_longitude: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    """
+    Prepara pontos válidos para o mapa e informa quantos comparáveis foram
+    descartados por coordenadas ausentes ou fora dos limites geográficos.
+    """
+    latitude = coordinate_to_numeric(
+        first_named_series(neighbors, latitude_column)
+    )
+    longitude = coordinate_to_numeric(
+        first_named_series(neighbors, longitude_column)
+    )
+
+    comparable_points = pd.DataFrame(
+        {
+            "latitude": latitude,
+            "longitude": longitude,
+        },
+        index=neighbors.index,
+    )
+
+    if "_peso_knn" in neighbors.columns:
+        comparable_points["peso"] = pd.to_numeric(
+            first_named_series(neighbors, "_peso_knn"),
+            errors="coerce",
+        )
+    else:
+        comparable_points["peso"] = np.nan
+
+    if "_distancia_geografica_km" in neighbors.columns:
+        comparable_points["distancia_km"] = pd.to_numeric(
+            first_named_series(neighbors, "_distancia_geografica_km"),
+            errors="coerce",
+        )
+    else:
+        comparable_points["distancia_km"] = np.nan
+
+    comparable_points["tipo_ponto"] = "Comparável"
+    comparable_points["ordem"] = np.arange(1, len(comparable_points) + 1)
+    comparable_points["peso_texto"] = comparable_points["peso"].map(
+        lambda value: (
+            f"{value * 100:.2f}%"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["distancia_texto"] = comparable_points[
+        "distancia_km"
+    ].map(
+        lambda value: (
+            f"{value:.3f} km"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+
+    valid_comparable = (
+        comparable_points["latitude"].between(-90, 90)
+        & comparable_points["longitude"].between(-180, 180)
+        & comparable_points["latitude"].notna()
+        & comparable_points["longitude"].notna()
+    )
+    discarded = int((~valid_comparable).sum())
+    comparable_points = comparable_points.loc[valid_comparable].copy()
+
+    target_points = pd.DataFrame(
+        [
+            {
+                "latitude": pd.to_numeric(
+                    pd.Series([target_latitude]), errors="coerce"
+                ).iloc[0],
+                "longitude": pd.to_numeric(
+                    pd.Series([target_longitude]), errors="coerce"
+                ).iloc[0],
+                "tipo_ponto": "Imóvel avaliando",
+                "ordem": 0,
+                "peso": np.nan,
+                "peso_texto": "—",
+                "distancia_km": 0.0,
+                "distancia_texto": "0,000 km",
+            }
+        ]
+    )
+
+    valid_target = (
+        target_points["latitude"].between(-90, 90)
+        & target_points["longitude"].between(-180, 180)
+        & target_points["latitude"].notna()
+        & target_points["longitude"].notna()
+    )
+    target_points = target_points.loc[valid_target].copy()
+
+    return comparable_points, target_points, discarded
+
+
+def render_comparables_map(
+    neighbors: pd.DataFrame,
+    latitude_column: str,
+    longitude_column: str,
+    target_latitude: float,
+    target_longitude: float,
+) -> None:
+    comparable_points, target_points, discarded = build_map_data(
+        neighbors=neighbors,
+        latitude_column=latitude_column,
+        longitude_column=longitude_column,
+        target_latitude=target_latitude,
+        target_longitude=target_longitude,
+    )
+
+    all_points = pd.concat(
+        [
+            target_points[["latitude", "longitude"]],
+            comparable_points[["latitude", "longitude"]],
+        ],
+        ignore_index=True,
+    )
+
+    if all_points.empty:
+        st.warning(
+            "O mapa não pôde ser exibido porque não há coordenadas válidas "
+            "entre o avaliando e os comparáveis."
+        )
+        return
+
+    st.markdown(
+        """
+        <div class="small-note" style="margin:.75rem 0 .55rem;">
+            <strong>Legenda:</strong>
+            <span style="display:inline-block;width:10px;height:10px;
+            border-radius:50%;background:#B42318;margin:0 .32rem 0 .7rem;"></span>
+            imóvel avaliando
+            <span style="display:inline-block;width:10px;height:10px;
+            border-radius:50%;background:#0E7C7B;margin:0 .32rem 0 .9rem;"></span>
+            comparáveis
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if discarded:
+        st.warning(
+            f"{discarded} comparável(is) não foi(ram) incluído(s) no mapa "
+            "porque possuíam latitude ou longitude inválida."
+        )
+
+    if pdk is None:
+        st.info(
+            "O PyDeck não está disponível neste ambiente. Foi utilizado o "
+            "mapa simplificado do Streamlit."
+        )
+        st.map(all_points, use_container_width=True)
+        return
+
+    center_latitude = float(all_points["latitude"].median())
+    center_longitude = float(all_points["longitude"].median())
+    zoom = calculate_map_zoom(all_points)
+
+    layers = []
+
+    if not comparable_points.empty:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=comparable_points,
+                get_position="[longitude, latitude]",
+                get_fill_color=[14, 124, 123, 205],
+                get_line_color=[255, 255, 255, 235],
+                get_radius=80,
+                radius_min_pixels=6,
+                radius_max_pixels=13,
+                line_width_min_pixels=1,
+                stroked=True,
+                filled=True,
+                pickable=True,
+                auto_highlight=True,
+            )
+        )
+
+    if not target_points.empty:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=target_points,
+                get_position="[longitude, latitude]",
+                get_fill_color=[180, 35, 24, 230],
+                get_line_color=[255, 255, 255, 255],
+                get_radius=120,
+                radius_min_pixels=9,
+                radius_max_pixels=17,
+                line_width_min_pixels=2,
+                stroked=True,
+                filled=True,
+                pickable=True,
+            )
+        )
+
+    deck = pdk.Deck(
+        map_style=(
+            "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+        ),
+        initial_view_state=pdk.ViewState(
+            latitude=center_latitude,
+            longitude=center_longitude,
+            zoom=zoom,
+            pitch=0,
+            bearing=0,
+        ),
+        layers=layers,
+        tooltip={
+            "html": (
+                "<b>{tipo_ponto}</b><br/>"
+                "Peso no KNN: {peso_texto}<br/>"
+                "Distância: {distancia_texto}<br/>"
+                "Latitude: {latitude}<br/>"
+                "Longitude: {longitude}"
+            ),
+            "style": {
+                "backgroundColor": "#172033",
+                "color": "white",
+                "fontSize": "12px",
+            },
+        },
+    )
+
+    st.pydeck_chart(
+        deck,
+        use_container_width=True,
+        height=500,
+    )
+
+
 def dataframe_to_excel(
     neighbors: pd.DataFrame,
     diagnostics: dict,
@@ -1359,23 +1659,14 @@ with tabs[1]:
         },
     )
 
-    map_df = neighbors[
-        [mapping.latitude, mapping.longitude]
-    ].rename(
-        columns={
-            mapping.latitude: "latitude",
-            mapping.longitude: "longitude",
-        }
+    st.markdown("#### Localização dos comparáveis")
+    render_comparables_map(
+        neighbors=neighbors,
+        latitude_column=mapping.latitude,
+        longitude_column=mapping.longitude,
+        target_latitude=run["target"]["latitude"],
+        target_longitude=run["target"]["longitude"],
     )
-    target_map = pd.DataFrame(
-        [
-            {
-                "latitude": run["target"]["latitude"],
-                "longitude": run["target"]["longitude"],
-            }
-        ]
-    )
-    st.map(pd.concat([target_map, map_df], ignore_index=True))
 
 diagnostics = {
     "aplicativo": APP_NAME,
