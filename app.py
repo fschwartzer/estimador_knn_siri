@@ -9,7 +9,7 @@ import streamlit as st
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.2"
+APP_EDITION = "LITE 1.3"
 CORE_VERSION = "6.1.3"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -717,6 +717,33 @@ def risk_card(level: str, confidence: int, reasons: list[str]) -> None:
     )
 
 
+
+def unique_preserve_order(values: list[str | None]) -> list[str]:
+    """Remove repetições preservando a primeira ocorrência e a ordem."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def make_unique_column_names(columns) -> list[str]:
+    """Garante nomes únicos mesmo após renomeações ou cabeçalhos repetidos."""
+    counts: dict[str, int] = {}
+    result: list[str] = []
+
+    for raw_name in columns:
+        name = str(raw_name)
+        occurrence = counts.get(name, 0)
+        counts[name] = occurrence + 1
+        result.append(name if occurrence == 0 else f"{name}_{occurrence + 1}")
+
+    return result
+
+
 def dataframe_to_excel(
     neighbors: pd.DataFrame,
     diagnostics: dict,
@@ -1238,29 +1265,29 @@ with tabs[0]:
 with tabs[1]:
     neighbors = estimate.neighbors.copy()
 
+    relevant_columns = unique_preserve_order(
+        [
+            "_row_excel",
+            mapping.tipo_informacao,
+            mapping.finalidade_oferta,
+            mapping.valor,
+            run["reference_area_column"],
+            mapping.area_construida,
+            mapping.area_privativa,
+            mapping.siat_area_total_lote,
+            mapping.testada,
+            mapping.latitude,
+            mapping.longitude,
+            "_valor_unitario_original",
+            "_valor_unitario_ajustado",
+            "_valor_unitario_robusto",
+            "_distancia_geografica_km",
+            "_peso_knn",
+            "_contribuicao_valor_unitario",
+        ]
+    )
     relevant_columns = [
-        "_row_excel",
-        mapping.tipo_informacao,
-        mapping.finalidade_oferta,
-        mapping.valor,
-        run["reference_area_column"],
-        mapping.area_construida,
-        mapping.area_privativa,
-        mapping.siat_area_total_lote,
-        mapping.testada,
-        mapping.latitude,
-        mapping.longitude,
-        "_valor_unitario_original",
-        "_valor_unitario_ajustado",
-        "_valor_unitario_robusto",
-        "_distancia_geografica_km",
-        "_peso_knn",
-        "_contribuicao_valor_unitario",
-    ]
-    relevant_columns = [
-        column
-        for column in relevant_columns
-        if column and column in neighbors.columns
+        column for column in relevant_columns if column in neighbors.columns
     ]
 
     rename = {
@@ -1274,17 +1301,35 @@ with tabs[1]:
     }
 
     neighbors_export = (
-        neighbors[relevant_columns]
+        neighbors.loc[:, relevant_columns]
         .rename(columns=rename)
         .sort_values("peso_knn", ascending=False)
     )
 
+    # Proteção adicional contra cabeçalhos repetidos no arquivo de origem
+    # ou colisões produzidas após a renomeação.
+    neighbors_export.columns = make_unique_column_names(
+        neighbors_export.columns
+    )
+
     neighbors_display = neighbors_export.copy()
-    if "peso_knn" in neighbors_display.columns:
+    weight_column = next(
+        (
+            column
+            for column in neighbors_display.columns
+            if column == "peso_knn" or column.startswith("peso_knn_")
+        ),
+        None,
+    )
+    if weight_column is not None:
         neighbors_display["peso_percentual"] = (
-            neighbors_display["peso_knn"] * 100
+            pd.to_numeric(
+                neighbors_display[weight_column],
+                errors="coerce",
+            )
+            * 100
         )
-        neighbors_display = neighbors_display.drop(columns=["peso_knn"])
+        neighbors_display = neighbors_display.drop(columns=[weight_column])
 
     st.dataframe(
         neighbors_display,
