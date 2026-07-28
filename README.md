@@ -1,7 +1,6 @@
-# estimador_knn_siri — LITE 1.2
+# estimador_knn_siri — 1.2
 
-Edição LITE do estimador imobiliário por KNN, preparada para usuários sem
-conhecimento estatístico ou de aprendizado de máquina.
+Estimador imobiliário por KNN.
 
 ## O que o usuário precisa fazer
 
@@ -13,7 +12,7 @@ conhecimento estatístico ou de aprendizado de máquina.
 
 ## Processamentos automáticos
 
-A aplicação mantém internamente os tratamentos da versão técnica:
+A aplicação contém internamente os seguintes tratamentos:
 
 - filtro pela finalidade;
 - exclusão de ofertas de aluguel;
@@ -27,8 +26,6 @@ A aplicação mantém internamente os tratamentos da versão técnica:
 - alertas de extrapolação;
 - pontuação de confiança;
 - exportação dos comparáveis e diagnósticos para Excel.
-
-O backtesting e todos os controles estatísticos foram removidos da interface.
 
 ## Parâmetros internos fixos
 
@@ -53,24 +50,6 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Streamlit Community Cloud
-
-Publique na raiz do repositório:
-
-- `app.py`;
-- `knn_valuation.py`;
-- `schema_utils.py`;
-- `requirements.txt`;
-- pasta `.streamlit`.
-
-Defina `app.py` como arquivo principal.
-
-
-## Alertas do fator de oferta
-
-A edição LITE 1.1 mantém integralmente o cálculo anterior e acrescenta apenas
-avisos interpretativos.
-
 ### Faixas do desconto
 
 | Desconto empírico | Alerta |
@@ -79,9 +58,9 @@ avisos interpretativos.
 | Acima de 0% até 10% | Elasticidade usual ou moderada |
 | Acima de 10% até 15% | Elasticidade relevante |
 | Acima de 15% até 20% | Elasticidade elevada |
-| Acima de 20% bruto | Alerta forte; o teto de 20% continua sendo aplicado |
+| Acima de 20% bruto | Alerta forte; é aplicado um teto de 20% |
 
-O desconto permanece definido pela mediana de
+O desconto é definido pela mediana de
 `1 - VU_ITBI / VU_Oferta` em quantis pareados, limitado entre 0% e 20%.
 
 ### Composição efetiva da amostra
@@ -106,10 +85,6 @@ se existe desequilíbrio superior a 3:1 ou 5:1 entre as quantidades.
 
 Essas faixas são diagnósticas: não bloqueiam nem modificam o cálculo.
 
-
-## Regra do fator de oferta — LITE 1.2
-
-A regra passa a distinguir claramente dois cenários.
 
 ### Amostra composta somente por ofertas
 
@@ -141,5 +116,3 @@ um desconto fixo: é exclusivamente o freio superior da razão calculada.
 Quando existe alguma Guia ITBI, mas não há pelo menos dois dados válidos em
 cada grupo, o desconto permanece em zero. O fator convencional de 10% é
 reservado à situação em que não existe nenhuma Guia ITBI.
-
-Nenhuma outra regra do estimador foi alterada.
