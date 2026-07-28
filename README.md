@@ -1,4 +1,4 @@
-# estimador_knn_siri — 1.4
+# estimador_knn_siri — 1.5
 
 Estimador imobiliário por KNN.
 
@@ -61,7 +61,7 @@ streamlit run app.py
 | Acima de 20% bruto | Alerta forte; é aplicado um teto de 20% |
 
 O desconto é definido pela mediana de
-`1 - VU_ITBI / VU_Oferta` em quantis pareados, limitado entre 0% e 20%.
+'1 - VU_ITBI / VU_Oferta' em quantis pareados, limitado entre 0% e 20%.
 
 ### Composição efetiva da amostra
 
