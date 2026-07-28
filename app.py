@@ -6,15 +6,11 @@ import hashlib
 import numpy as np
 import pandas as pd
 import streamlit as st
-
-try:
-    import pydeck as pdk
-except ImportError:
-    pdk = None
+import matplotlib.pyplot as plt
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.4"
+APP_EDITION = "LITE 1.5"
 CORE_VERSION = "6.1.3"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -914,6 +910,13 @@ def render_comparables_map(
     target_latitude: float,
     target_longitude: float,
 ) -> None:
+    """
+    Exibe um mapa de proximidade autossuficiente.
+
+    O gráfico não depende de WebGL, Mapbox, tiles externos ou componentes
+    JavaScript. As coordenadas são convertidas em deslocamentos aproximados
+    em quilômetros em relação ao imóvel avaliando.
+    """
     comparable_points, target_points, discarded = build_map_data(
         neighbors=neighbors,
         latitude_column=latitude_column,
@@ -922,35 +925,15 @@ def render_comparables_map(
         target_longitude=target_longitude,
     )
 
-    all_points = pd.concat(
-        [
-            target_points[["latitude", "longitude"]],
-            comparable_points[["latitude", "longitude"]],
-        ],
-        ignore_index=True,
-    )
-
-    if all_points.empty:
+    if target_points.empty:
         st.warning(
-            "O mapa não pôde ser exibido porque não há coordenadas válidas "
-            "entre o avaliando e os comparáveis."
+            "O mapa não pôde ser exibido porque as coordenadas do imóvel "
+            "avaliando são inválidas."
         )
         return
 
-    st.markdown(
-        """
-        <div class="small-note" style="margin:.75rem 0 .55rem;">
-            <strong>Legenda:</strong>
-            <span style="display:inline-block;width:10px;height:10px;
-            border-radius:50%;background:#B42318;margin:0 .32rem 0 .7rem;"></span>
-            imóvel avaliando
-            <span style="display:inline-block;width:10px;height:10px;
-            border-radius:50%;background:#0E7C7B;margin:0 .32rem 0 .9rem;"></span>
-            comparáveis
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    target_lat = float(target_points.iloc[0]["latitude"])
+    target_lon = float(target_points.iloc[0]["longitude"])
 
     if discarded:
         st.warning(
@@ -958,91 +941,171 @@ def render_comparables_map(
             "porque possuíam latitude ou longitude inválida."
         )
 
-    if pdk is None:
-        st.info(
-            "O PyDeck não está disponível neste ambiente. Foi utilizado o "
-            "mapa simplificado do Streamlit."
+    if comparable_points.empty:
+        st.warning(
+            "Não existem comparáveis com coordenadas válidas para representar."
         )
-        st.map(all_points, use_container_width=True)
         return
 
-    center_latitude = float(all_points["latitude"].median())
-    center_longitude = float(all_points["longitude"].median())
-    zoom = calculate_map_zoom(all_points)
+    latitude_scale_km = 111.32
+    longitude_scale_km = 111.32 * np.cos(np.radians(target_lat))
+    longitude_scale_km = max(abs(longitude_scale_km), 1e-6)
 
-    layers = []
+    comparable_points = comparable_points.copy()
+    comparable_points["deslocamento_leste_km"] = (
+        comparable_points["longitude"] - target_lon
+    ) * longitude_scale_km
+    comparable_points["deslocamento_norte_km"] = (
+        comparable_points["latitude"] - target_lat
+    ) * latitude_scale_km
 
-    if not comparable_points.empty:
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=comparable_points,
-                get_position="[longitude, latitude]",
-                get_fill_color=[14, 124, 123, 205],
-                get_line_color=[255, 255, 255, 235],
-                get_radius=80,
-                radius_min_pixels=6,
-                radius_max_pixels=13,
-                line_width_min_pixels=1,
-                stroked=True,
-                filled=True,
-                pickable=True,
-                auto_highlight=True,
-            )
+    weights = pd.to_numeric(
+        comparable_points["peso"],
+        errors="coerce",
+    ).fillna(0.0)
+
+    if weights.max() > 0:
+        marker_sizes = 80 + 520 * (weights / weights.max())
+    else:
+        marker_sizes = pd.Series(
+            np.full(len(comparable_points), 180.0),
+            index=comparable_points.index,
         )
 
-    if not target_points.empty:
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=target_points,
-                get_position="[longitude, latitude]",
-                get_fill_color=[180, 35, 24, 230],
-                get_line_color=[255, 255, 255, 255],
-                get_radius=120,
-                radius_min_pixels=9,
-                radius_max_pixels=17,
-                line_width_min_pixels=2,
-                stroked=True,
-                filled=True,
-                pickable=True,
-            )
-        )
+    fig, ax = plt.subplots(figsize=(11.5, 6.2))
 
-    deck = pdk.Deck(
-        map_style=(
-            "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-        ),
-        initial_view_state=pdk.ViewState(
-            latitude=center_latitude,
-            longitude=center_longitude,
-            zoom=zoom,
-            pitch=0,
-            bearing=0,
-        ),
-        layers=layers,
-        tooltip={
-            "html": (
-                "<b>{tipo_ponto}</b><br/>"
-                "Peso no KNN: {peso_texto}<br/>"
-                "Distância: {distancia_texto}<br/>"
-                "Latitude: {latitude}<br/>"
-                "Longitude: {longitude}"
+    ax.scatter(
+        comparable_points["deslocamento_leste_km"],
+        comparable_points["deslocamento_norte_km"],
+        s=marker_sizes,
+        alpha=0.78,
+        edgecolors="white",
+        linewidths=1.2,
+        label="Comparáveis",
+        zorder=3,
+    )
+
+    ax.scatter(
+        [0.0],
+        [0.0],
+        s=340,
+        marker="*",
+        edgecolors="white",
+        linewidths=1.4,
+        label="Imóvel avaliando",
+        zorder=5,
+    )
+
+    comparable_points = comparable_points.sort_values(
+        "peso",
+        ascending=False,
+        na_position="last",
+    ).reset_index(drop=True)
+
+    for position, row in comparable_points.iterrows():
+        label = str(position + 1)
+        ax.annotate(
+            label,
+            (
+                row["deslocamento_leste_km"],
+                row["deslocamento_norte_km"],
             ),
-            "style": {
-                "backgroundColor": "#172033",
-                "color": "white",
-                "fontSize": "12px",
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8.5,
+            fontweight="bold",
+            zorder=6,
+        )
+
+    all_x = np.concatenate(
+        [
+            comparable_points["deslocamento_leste_km"].to_numpy(dtype=float),
+            np.array([0.0]),
+        ]
+    )
+    all_y = np.concatenate(
+        [
+            comparable_points["deslocamento_norte_km"].to_numpy(dtype=float),
+            np.array([0.0]),
+        ]
+    )
+
+    max_extent = max(
+        float(np.nanmax(np.abs(all_x))) if all_x.size else 0.0,
+        float(np.nanmax(np.abs(all_y))) if all_y.size else 0.0,
+        0.25,
+    )
+    padding = max_extent * 0.18 + 0.08
+
+    ax.set_xlim(float(np.nanmin(all_x)) - padding, float(np.nanmax(all_x)) + padding)
+    ax.set_ylim(float(np.nanmin(all_y)) - padding, float(np.nanmax(all_y)) + padding)
+    ax.set_aspect("equal", adjustable="datalim")
+    ax.axhline(0, linewidth=0.7, alpha=0.35, zorder=1)
+    ax.axvline(0, linewidth=0.7, alpha=0.35, zorder=1)
+    ax.grid(True, linewidth=0.6, alpha=0.25)
+    ax.set_xlabel("Deslocamento leste–oeste em relação ao avaliando (km)")
+    ax.set_ylabel("Deslocamento norte–sul em relação ao avaliando (km)")
+    ax.set_title("Mapa de proximidade dos comparáveis", loc="left", pad=14)
+    ax.legend(loc="best", frameon=True)
+
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+    st.caption(
+        "O tamanho dos círculos representa o peso do comparável no KNN. "
+        "Os números correspondem à ordem decrescente de peso. As distâncias "
+        "são aproximações planas calculadas a partir de latitude e longitude."
+    )
+
+    map_table = comparable_points[
+        [
+            "ordem",
+            "peso",
+            "distancia_km",
+            "latitude",
+            "longitude",
+            "deslocamento_leste_km",
+            "deslocamento_norte_km",
+        ]
+    ].copy()
+    map_table.insert(
+        0,
+        "posição_no_mapa",
+        np.arange(1, len(map_table) + 1),
+    )
+
+    with st.expander("Identificação dos pontos do mapa"):
+        map_display = map_table.copy()
+        map_display["peso_percentual"] = (
+            pd.to_numeric(map_display["peso"], errors="coerce") * 100
+        )
+        map_display = map_display.drop(columns=["peso"])
+
+        st.dataframe(
+            map_display,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "peso_percentual": st.column_config.NumberColumn(
+                    "Peso",
+                    format="%.2f%%",
+                ),
+                "distancia_km": st.column_config.NumberColumn(
+                    "Distância",
+                    format="%.3f km",
+                ),
+                "deslocamento_leste_km": st.column_config.NumberColumn(
+                    "Leste–oeste",
+                    format="%.3f km",
+                ),
+                "deslocamento_norte_km": st.column_config.NumberColumn(
+                    "Norte–sul",
+                    format="%.3f km",
+                ),
+                "latitude": st.column_config.NumberColumn(format="%.7f"),
+                "longitude": st.column_config.NumberColumn(format="%.7f"),
             },
-        },
-    )
-
-    st.pydeck_chart(
-        deck,
-        use_container_width=True,
-        height=500,
-    )
-
+        )
 
 def dataframe_to_excel(
     neighbors: pd.DataFrame,
