@@ -13,14 +13,14 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.11.0"
-CORE_VERSION = "6.6.0"
+APP_EDITION = "LITE 1.12.0"
+CORE_VERSION = "6.7.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
 MAX_K = 30
 MIN_EFFECTIVE_NEIGHBORS = 5.0
-SIMILARITY_WEIGHT = 0.75
+SIMILARITY_WEIGHT = 2.0 / 3.0
 DISTANCE_POWER = 1.0
 MAX_INDIVIDUAL_WEIGHT = 0.30
 ROBUST_MAD_THRESHOLD = 2.5
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.11.0-20260730"
-CORE_MODULE_FILE = "estimador_knn_core_v660.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v660.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.12.0-20260730"
+CORE_MODULE_FILE = "estimador_knn_core_v670.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v670.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v660",
+        "_estimador_knn_core_runtime_v670",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v660",
+        "_estimador_knn_schema_runtime_v670",
     )
 except Exception as exc:
     st.error(
