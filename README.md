@@ -1,4 +1,4 @@
-# estimador_knn_siri — 1.5
+# estimador_knn_siri — 1.6
 
 Estimador imobiliário por KNN.
 
