@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.8"
-CORE_VERSION = "6.3.0"
+APP_EDITION = "LITE 1.9"
+CORE_VERSION = "6.4.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
@@ -1970,6 +1970,26 @@ with tabs[0]:
         )
         pf3.metric("Dados em alerta", prefilter_flagged)
         pf4.metric("Guias ITBI utilizadas", prefilter_itbi_after)
+
+        purpose_floor = float(
+            preparation.diagnostics.get(
+                "purpose_unit_value_floor",
+                0.0,
+            )
+            or 0.0
+        )
+        purpose_floor_excluded = int(
+            preparation.diagnostics.get(
+                "purpose_floor_excluded",
+                0,
+            )
+        )
+        if purpose_floor > 0:
+            st.caption(
+                f"Piso da finalidade: {money_br(purpose_floor)}/m². "
+                f"Registros excluídos por esse piso: "
+                f"{purpose_floor_excluded}."
+            )
 
         method = preparation.diagnostics.get(
             "prefilter_statistical_method",

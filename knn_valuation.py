@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-MODULE_API_VERSION = "6.3.0"
+MODULE_API_VERSION = "6.4.0"
 
 
 TIPO_ITBI = "guia itbi"
@@ -479,6 +479,44 @@ def deduplicate_offers(
     return cleaned, diagnostics
 
 
+
+PURPOSE_UNIT_VALUE_FLOORS: dict[str, float] = {
+    'apart-hotel(flat)': 1200.00,
+    'apartamento': 1200.00,
+    'apartamento de cobertura': 900.00,
+    'construcao em area projetada de gleba': 100.00,
+    'deposito / armazem / predio industrial': 650.00,
+    'edificio garagem': 200.00,
+    'espaco de estacionamento nao residenc descoberto': 200.00,
+    'espaco de estacionamento nao residencial': 150.00,
+    'espaco de estacionamento residencial': 200.00,
+    'espaco de estacionamento residencial descoberto': 300.00,
+    'garagem coletiva': 250.00,
+    'gleba': 20.00,
+    'hotel ou similar': 400.00,
+    'imovel especial': 400.00,
+    'loja de interior': 700.00,
+    'loja em galeria': 1000.00,
+    'loja em shopping': 1200.00,
+    'loja terrea em edificio': 1000.00,
+    'residencia condom horiz aberto sem area uso comum': 1000.00,
+    'residencia de frente com interiores': 1300.00,
+    'residencia de interior': 800.00,
+    'residencia isolada': 950.00,
+    'residencia nao padroniz em condom horizontal fechado': 1000.00,
+    'residencia nao padronizada em cond horiz aberto c/ area comum': 1000.00,
+    'residencia padronizada cond horiz aberto c/ area uso comum': 900.00,
+    'residencia padronizada em cond horizontal fechado': 1000.00,
+    'sala comercial': 900.00,
+    'sala de cobertura': 700.00,
+    'terreno': 200.00,
+    'terreno em condominio horizontal aberto': 150.00,
+    'terreno em condominio horizontal fechado': 200.00,
+    'terrenos condominio horiz aberto sem area uso comum': 100.00,
+    'unidade (de comercio ou servicos) de frente nao isolada': 1300.00,
+    'unidade de comercio e servico isolada': 850.00,
+}
+
 PREFILTER_SYMBOLIC_VALUE_MAX = 1.00
 PREFILTER_MIN_ITBI_FOR_DIAGNOSTIC = 8
 PREFILTER_MIN_ITBI_FOR_AUTO_EXCLUSION = 15
@@ -620,6 +658,7 @@ def _ordered_control_columns(data: pd.DataFrame) -> pd.DataFrame:
         "_motivo_exclusao",
         "_motivo_alerta",
         "_valor_unitario_original",
+        "_piso_finalidade_vu",
         "_log_valor_unitario",
         "_escore_robusto_prefiltro",
         "_limite_inferior_vu_prefiltro",
@@ -635,6 +674,7 @@ def _safe_market_prefilter(
     mapping: ColumnMapping,
     reference_area_column: str,
     value_kind: str,
+    selected_purpose: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     working = data.copy()
     reasons = pd.Series("", index=working.index, dtype="string")
@@ -683,6 +723,36 @@ def _safe_market_prefilter(
         | working["_valor_unitario_original"].le(0),
         "Valor unitário inválido ou não positivo",
     )
+
+    purpose_norm = normalize_text(selected_purpose)
+    purpose_floor = float(
+        PURPOSE_UNIT_VALUE_FLOORS.get(purpose_norm, 0.0)
+    )
+    working["_piso_finalidade_vu"] = purpose_floor
+
+    purpose_floor_mask = (
+        purpose_floor > 0
+        and np.isfinite(purpose_floor)
+    )
+    if purpose_floor_mask:
+        below_purpose_floor = (
+            np.isfinite(working["_valor_unitario_original"])
+            & working["_valor_unitario_original"].gt(0)
+            & working["_valor_unitario_original"].lt(purpose_floor)
+        )
+        reasons = _append_reason(
+            reasons,
+            below_purpose_floor,
+            (
+                "Valor unitário inferior ao piso da finalidade "
+                f"({purpose_floor:.2f} R$/m²)"
+            ),
+        )
+    else:
+        below_purpose_floor = pd.Series(
+            False,
+            index=working.index,
+        )
 
     is_itbi = working["_tipo_norm"].eq(TIPO_ITBI)
 
@@ -946,6 +1016,14 @@ def _safe_market_prefilter(
             property_count_columns
         ),
         "prefilter_exclusion_reasons": reason_counts,
+        "purpose_unit_value_floor": purpose_floor,
+        "purpose_floor_excluded": int(
+            pd.Series(
+                below_purpose_floor,
+                index=working.index,
+            ).fillna(False).sum()
+        ),
+        "purpose_floor_name": selected_purpose,
     }
     return kept, excluded, flagged, diagnostics
 
@@ -1045,6 +1123,7 @@ def prepare_data(
             mapping=mapping,
             reference_area_column=reference_area_column,
             value_kind=value_kind,
+            selected_purpose=selected_purpose,
         )
     )
 
