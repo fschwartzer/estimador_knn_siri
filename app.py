@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.9.2"
-CORE_VERSION = "6.4.0"
+APP_EDITION = "LITE 1.11.0"
+CORE_VERSION = "6.6.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.9.2-20260730"
-CORE_MODULE_FILE = "estimador_knn_core_v640.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v640.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.11.0-20260730"
+CORE_MODULE_FILE = "estimador_knn_core_v660.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v660.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v640",
+        "_estimador_knn_core_runtime_v660",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v640",
+        "_estimador_knn_schema_runtime_v660",
     )
 except Exception as exc:
     st.error(
@@ -110,6 +110,16 @@ _required_schema = {
     "DERIVED_AREA_LOTE",
     "DERIVED_AREA_PRIVATIVA",
     "DERIVED_TESTADA",
+    "DERIVED_FINALIDADE_CRAWLER_INFORMADA",
+    "DERIVED_FINALIDADE_SIAT_NORMALIZADA",
+    "DERIVED_FINALIDADE_TIPO_CRAWLER_NORMALIZADA",
+    "DERIVED_FINALIDADE_CRAWLER_NORMALIZADA",
+    "DERIVED_FONTE_NORMALIZACAO",
+    "DERIVED_CONFLITO_TIPOLOGICO",
+    "DERIVED_CONFIANCA_NORMALIZACAO",
+    "find_finalidade_crawler_column",
+    "normalize_finalidade_crawler",
+    "reference_area_preference",
     "enrich_known_schemas",
     "first_existing",
     "friendly_column_name",
@@ -162,6 +172,30 @@ DERIVED_AREA_CONSTRUIDA = _schema.DERIVED_AREA_CONSTRUIDA
 DERIVED_AREA_LOTE = _schema.DERIVED_AREA_LOTE
 DERIVED_AREA_PRIVATIVA = _schema.DERIVED_AREA_PRIVATIVA
 DERIVED_TESTADA = _schema.DERIVED_TESTADA
+DERIVED_FINALIDADE_CRAWLER_INFORMADA = (
+    _schema.DERIVED_FINALIDADE_CRAWLER_INFORMADA
+)
+DERIVED_FINALIDADE_SIAT_NORMALIZADA = (
+    _schema.DERIVED_FINALIDADE_SIAT_NORMALIZADA
+)
+DERIVED_FINALIDADE_TIPO_CRAWLER_NORMALIZADA = (
+    _schema.DERIVED_FINALIDADE_TIPO_CRAWLER_NORMALIZADA
+)
+DERIVED_FINALIDADE_CRAWLER_NORMALIZADA = (
+    _schema.DERIVED_FINALIDADE_CRAWLER_NORMALIZADA
+)
+DERIVED_FONTE_NORMALIZACAO = _schema.DERIVED_FONTE_NORMALIZACAO
+DERIVED_CONFLITO_TIPOLOGICO = _schema.DERIVED_CONFLITO_TIPOLOGICO
+DERIVED_CONFIANCA_NORMALIZACAO = (
+    _schema.DERIVED_CONFIANCA_NORMALIZACAO
+)
+find_finalidade_crawler_column = (
+    _schema.find_finalidade_crawler_column
+)
+normalize_finalidade_crawler = (
+    _schema.normalize_finalidade_crawler
+)
+reference_area_preference = _schema.reference_area_preference
 enrich_known_schemas = _schema.enrich_known_schemas
 first_existing = _schema.first_existing
 friendly_column_name = _schema.friendly_column_name
@@ -420,10 +454,11 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
     finalidade = choose_existing(
         columns,
         [
+            DERIVED_FINALIDADE_CRAWLER_NORMALIZADA,
+            "finalidade_crawler_normalizada",
+            "finalidade_crawler",
+            "crawler_finalidade",
             "siat_finalidade_descricao",
-            "finalidade_oferta",
-            "finalidade",
-            "tipo_imovel",
         ],
     )
     valor = choose_existing(
@@ -1568,43 +1603,75 @@ else:
         "arquivo não contenha todos os marcadores do padrão SIRI completo."
     )
 
-purpose_series = (
-    df[mapping.finalidade_oferta]
+siat_purpose_column = choose_existing(
+    [str(column) for column in df.columns],
+    ["siat_finalidade_descricao", "finalidade_oferta", "finalidade"],
+)
+finalidade_crawler_source_column = find_finalidade_crawler_column(
+    [str(column) for column in original_df.columns]
+)
+
+normalized_purpose_series = (
+    df[DERIVED_FINALIDADE_CRAWLER_NORMALIZADA]
     .dropna()
     .astype(str)
     .str.strip()
 )
-purposes = sorted(value for value in purpose_series.unique() if value)
+purposes = sorted(
+    value
+    for value in normalized_purpose_series.unique()
+    if value
+)
 if not purposes:
-    st.error("Não foram encontradas finalidades imobiliárias válidas.")
+    st.error(
+        "Nenhum registro pôde ser enquadrado na taxonomia "
+        "finalidade_crawler."
+    )
     st.stop()
 
 step_header(2, "Informe o imóvel")
 
-selected_purpose = st.selectbox("Finalidade do imóvel", purposes)
+selected_purpose = st.selectbox(
+    "Finalidade da estimativa",
+    purposes,
+)
+area_preference = reference_area_preference(selected_purpose)
+territorial = area_preference == "terreno"
 
-suggested_mode = (
-    "Terreno ou lote"
-    if purpose_suggests_territorial(selected_purpose)
-    else "Unidade construída"
+area_preference_labels = {
+    "terreno": "área total do lote",
+    "privativa": "área privativa",
+    "privativa_ou_construida": (
+        "área privativa, com área construída como alternativa"
+    ),
+    "construida": "área construída",
+}
+st.caption(
+    "Todos os comparáveis serão selecionados pela finalidade crawler "
+    f"normalizada **{selected_purpose}**. Área de referência prioritária: "
+    f"**{area_preference_labels.get(area_preference, area_preference)}**."
 )
 
-context_key = f"{file_signature}:{selected_purpose}"
+context_key = (
+    f"{file_signature}:{selected_purpose}:{area_preference}"
+)
 if st.session_state.get("_lite_last_context") != context_key:
     st.session_state["_lite_last_context"] = context_key
-    st.session_state["lite_property_mode"] = suggested_mode
     st.session_state.pop("lite_result", None)
 
-property_mode = st.radio(
-    "Tipo de imóvel",
-    ["Terreno ou lote", "Unidade construída"],
-    horizontal=True,
-    key="lite_property_mode",
+st.info(
+    "Tratamento automático: "
+    + (
+        "imóvel territorial."
+        if territorial
+        else "unidade construída."
+    )
 )
-territorial = property_mode == "Terreno ou lote"
 
-purpose_mask = df[mapping.finalidade_oferta].map(normalize_text).eq(
-    normalize_text(selected_purpose)
+purpose_mask = (
+    df[DERIVED_FINALIDADE_CRAWLER_NORMALIZADA]
+    .map(normalize_text)
+    .eq(normalize_text(selected_purpose))
 )
 purpose_types = df.loc[purpose_mask, mapping.tipo_informacao].map(normalize_text)
 
@@ -1634,6 +1701,51 @@ st.caption(
     "Somente Guias ITBI e registros classificados como Oferta de venda "
     "seguem para o cálculo. Ofertas de aluguel são excluídas antes da "
     "deduplicação, do fator de oferta e da seleção dos comparáveis."
+)
+
+selected_rows_mask = purpose_mask
+explicit_finality_count = int(
+    (
+        selected_rows_mask
+        & df[DERIVED_FONTE_NORMALIZACAO].eq(
+            "FINALIDADE_CRAWLER"
+        )
+    ).sum()
+)
+crawler_type_count = int(
+    (
+        selected_rows_mask
+        & df[DERIVED_FONTE_NORMALIZACAO].eq("TIPO_CRAWLER")
+    ).sum()
+)
+siat_count = int(
+    (
+        selected_rows_mask
+        & df[DERIVED_FONTE_NORMALIZACAO].eq("SIAT")
+    ).sum()
+)
+siat_fallback_count = int(
+    (
+        selected_rows_mask
+        & df[DERIVED_FONTE_NORMALIZACAO].eq(
+            "SIAT_FALLBACK"
+        )
+    ).sum()
+)
+typological_conflict_count = int(
+    (
+        selected_rows_mask
+        & df[DERIVED_CONFLITO_TIPOLOGICO].isin(
+            ["Sim", "Moderado"]
+        )
+    ).sum()
+)
+st.caption(
+    f"Finalidade da pesquisa: **{explicit_finality_count}** · "
+    f"tipo do crawler: **{crawler_type_count}** · "
+    f"SIAT: **{siat_count}** · "
+    f"fallback ao SIAT: **{siat_fallback_count}** · "
+    f"conflitos: **{typological_conflict_count}**."
 )
 
 if territorial:
@@ -1676,7 +1788,11 @@ with st.form("lite_property_form"):
             with c1:
                 target_area_privativa = (
                     st.number_input(
-                        "Área privativa (m²)",
+                        (
+                            "Área privativa (m²) — referência principal"
+                            if area_preference == "privativa"
+                            else "Área privativa (m²)"
+                        ),
                         min_value=0.0,
                         value=0.0,
                         step=1.0,
@@ -1691,7 +1807,11 @@ with st.form("lite_property_form"):
             with c2:
                 target_area_construida = (
                     st.number_input(
-                        "Área construída (m²)",
+                        (
+                            "Área construída (m²) — referência principal"
+                            if area_preference == "construida"
+                            else "Área construída (m²)"
+                        ),
                         min_value=0.0,
                         value=0.0,
                         step=1.0,
@@ -1735,14 +1855,53 @@ if calculate:
                 raise ValueError("Informe a testada do terreno.")
             reference_area_column = mapping.siat_area_total_lote
         else:
-            if target_area_privativa > 0 and mapping.area_privativa:
-                reference_area_column = mapping.area_privativa
-            elif target_area_construida > 0 and mapping.area_construida:
-                reference_area_column = mapping.area_construida
+            if area_preference == "privativa":
+                if (
+                    mapping.area_privativa
+                    and target_area_privativa > 0
+                ):
+                    reference_area_column = mapping.area_privativa
+                elif (
+                    not mapping.area_privativa
+                    and mapping.area_construida
+                    and target_area_construida > 0
+                ):
+                    reference_area_column = mapping.area_construida
+                else:
+                    raise ValueError(
+                        "Para esta finalidade, informe a área privativa."
+                    )
+            elif area_preference == "construida":
+                if (
+                    mapping.area_construida
+                    and target_area_construida > 0
+                ):
+                    reference_area_column = mapping.area_construida
+                elif (
+                    not mapping.area_construida
+                    and mapping.area_privativa
+                    and target_area_privativa > 0
+                ):
+                    reference_area_column = mapping.area_privativa
+                else:
+                    raise ValueError(
+                        "Para esta finalidade, informe a área construída."
+                    )
             else:
-                raise ValueError(
-                    "Informe a área privativa ou a área construída."
-                )
+                if (
+                    target_area_privativa > 0
+                    and mapping.area_privativa
+                ):
+                    reference_area_column = mapping.area_privativa
+                elif (
+                    target_area_construida > 0
+                    and mapping.area_construida
+                ):
+                    reference_area_column = mapping.area_construida
+                else:
+                    raise ValueError(
+                        "Informe a área privativa ou a área construída."
+                    )
 
         target = {
             "area_construida": (
@@ -1804,6 +1963,7 @@ if calculate:
             df=df,
             mapping=mapping,
             selected_purpose=selected_purpose,
+            floor_purpose=selected_purpose,
             value_kind=detect_value_kind(mapping.valor),
             reference_area_column=reference_area_column,
             discount_cap=DISCOUNT_CAP,
@@ -1849,6 +2009,8 @@ if calculate:
             "estimate": estimate,
             "mapping": mapping,
             "purpose": selected_purpose,
+            "finalidade_crawler_normalizada": selected_purpose,
+            "market_segment": selected_purpose,
             "territorial": territorial,
             "reference_area_column": reference_area_column,
             "target": target,
@@ -2208,7 +2370,16 @@ with tabs[1]:
         [
             "_row_excel",
             mapping.tipo_informacao,
-            mapping.finalidade_oferta,
+            finalidade_crawler_source_column,
+            siat_purpose_column,
+            "crawler_tipo_imovel_normalizado",
+            DERIVED_FINALIDADE_CRAWLER_INFORMADA,
+            DERIVED_FINALIDADE_SIAT_NORMALIZADA,
+            DERIVED_FINALIDADE_TIPO_CRAWLER_NORMALIZADA,
+            DERIVED_FINALIDADE_CRAWLER_NORMALIZADA,
+            DERIVED_FONTE_NORMALIZACAO,
+            DERIVED_CONFLITO_TIPOLOGICO,
+            DERIVED_CONFIANCA_NORMALIZACAO,
             mapping.valor,
             run["reference_area_column"],
             mapping.area_construida,
@@ -2314,7 +2485,10 @@ with tabs[1]:
 diagnostics = {
     "aplicativo": APP_NAME,
     "edicao": APP_EDITION,
-    "finalidade": run["purpose"],
+    "finalidade_crawler_normalizada": (
+        run["finalidade_crawler_normalizada"]
+    ),
+    "taxonomia_utilizada": "finalidade_crawler_normalizada",
     "valor_total_estimado": estimate.estimated_total_value,
     "valor_unitario_estimado": estimate.estimated_unit_value,
     "area_referencia": run["reference_area_column"],
@@ -2347,6 +2521,7 @@ with st.expander("Como o estimador trabalha"):
         """
 - considera apenas a finalidade escolhida;
 - exclui ofertas de aluguel;
+- normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;
 - remove primeiro duplicidades por tipo, inscrição SIAT e valor, mantendo a coleta mais recente;
 - usa identificadores genuínos do anúncio apenas como fallback;
 - exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;
