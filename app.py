@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.6"
-CORE_VERSION = "6.1.3"
+APP_EDITION = "LITE 1.7"
+CORE_VERSION = "6.2.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
@@ -1328,6 +1328,8 @@ def render_comparables_map(
 def dataframe_to_excel(
     neighbors: pd.DataFrame,
     diagnostics: dict,
+    excluded_data: pd.DataFrame,
+    flagged_data: pd.DataFrame,
 ) -> bytes:
     output = BytesIO()
     diagnostics_df = pd.DataFrame(
@@ -1338,9 +1340,28 @@ def dataframe_to_excel(
         ]
     )
 
+    excluded_export = excluded_data.copy()
+    flagged_export = flagged_data.copy()
+    excluded_export.columns = make_unique_column_names(
+        excluded_export.columns
+    )
+    flagged_export.columns = make_unique_column_names(
+        flagged_export.columns
+    )
+
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         neighbors.to_excel(writer, sheet_name="Comparaveis", index=False)
         diagnostics_df.to_excel(writer, sheet_name="Diagnosticos", index=False)
+        excluded_export.to_excel(
+            writer,
+            sheet_name="Dados_excluidos",
+            index=False,
+        )
+        flagged_export.to_excel(
+            writer,
+            sheet_name="Dados_alertados",
+            index=False,
+        )
 
         worksheet = writer.sheets["Comparaveis"]
         headers = {cell.value: cell.column for cell in worksheet[1]}
@@ -1369,6 +1390,25 @@ def dataframe_to_excel(
                     row=row_number,
                     column=column_number,
                 ).number_format = 'R$ #,##0.00'
+
+        for sheet_name in ("Dados_excluidos", "Dados_alertados"):
+            control_sheet = writer.sheets[sheet_name]
+            control_headers = {
+                cell.value: cell.column for cell in control_sheet[1]
+            }
+            for column_name in (
+                "_valor_unitario_original",
+                "_limite_inferior_vu_prefiltro",
+                "_limite_superior_vu_prefiltro",
+            ):
+                column_number = control_headers.get(column_name)
+                if column_number is None:
+                    continue
+                for row_number in range(2, control_sheet.max_row + 1):
+                    control_sheet.cell(
+                        row=row_number,
+                        column=column_number,
+                    ).number_format = 'R$ #,##0.00'
 
     output.seek(0)
     return output.getvalue()
@@ -1505,10 +1545,33 @@ purpose_mask = df[mapping.finalidade_oferta].map(normalize_text).eq(
 )
 purpose_types = df.loc[purpose_mask, mapping.tipo_informacao].map(normalize_text)
 
-s1, s2, s3 = st.columns(3)
-s1.metric("Dados disponíveis", int(purpose_mask.sum()))
-s2.metric("Guias ITBI", int(purpose_types.eq("guia itbi").sum()))
-s3.metric("Ofertas", int(purpose_types.eq("oferta").sum()))
+itbi_count = int(purpose_types.eq("guia itbi").sum())
+sale_offer_count = int(purpose_types.eq("oferta").sum())
+rental_count = int(
+    purpose_types.str.contains(
+        r"aluguel|locacao|arrendamento",
+        regex=True,
+        na=False,
+    ).sum()
+)
+usable_count = itbi_count + sale_offer_count
+
+s1, s2, s3, s4 = st.columns(4)
+s1.metric("Dados utilizáveis", usable_count)
+s2.metric("Guias ITBI", itbi_count)
+s3.metric("Ofertas de venda", sale_offer_count)
+s4.metric(
+    "Aluguéis excluídos",
+    rental_count,
+    delta="não entram no KNN",
+    delta_color="off",
+)
+
+st.caption(
+    "Somente Guias ITBI e registros classificados como Oferta de venda "
+    "seguem para o cálculo. Ofertas de aluguel são excluídas antes da "
+    "deduplicação, do fator de oferta e da seleção dos comparáveis."
+)
 
 if territorial:
     if not mapping.siat_area_total_lote:
@@ -1681,6 +1744,19 @@ if calculate:
             duplicate_identifier_columns=duplicate_identifier_columns,
         )
 
+        rental_rows_after_filter = int(
+            preparation.data["_tipo_norm"].str.contains(
+                r"aluguel|locacao|arrendamento",
+                regex=True,
+                na=False,
+            ).sum()
+        )
+        if rental_rows_after_filter:
+            raise RuntimeError(
+                "Falha de integridade: foram encontrados registros de aluguel "
+                "após o filtro da amostra."
+            )
+
         estimate = estimate_knn(
             preparation=preparation,
             mapping=mapping,
@@ -1828,6 +1904,149 @@ with tabs[0]:
             for reason in risk_reasons:
                 st.warning(reason)
 
+    prefilter_itbi_before = int(
+        preparation.diagnostics.get("prefilter_itbi_before", 0)
+    )
+    prefilter_itbi_after = int(
+        preparation.diagnostics.get("prefilter_itbi_after", 0)
+    )
+    prefilter_deterministic = int(
+        preparation.diagnostics.get(
+            "prefilter_deterministic_excluded",
+            0,
+        )
+    )
+    prefilter_statistical = int(
+        preparation.diagnostics.get(
+            "prefilter_statistical_excluded",
+            0,
+        )
+    )
+    prefilter_flagged = int(
+        preparation.diagnostics.get("prefilter_flagged", 0)
+    )
+    prefilter_total_excluded = int(
+        preparation.diagnostics.get("prefilter_total_excluded", 0)
+    )
+
+    with st.container(border=True):
+        st.markdown("#### Controle prévio da amostra")
+        pf1, pf2, pf3, pf4 = st.columns(4)
+        pf1.metric("Guias ITBI recebidas", prefilter_itbi_before)
+        pf2.metric(
+            "Dados excluídos",
+            prefilter_total_excluded,
+            delta=(
+                f"{prefilter_deterministic} cadastrais · "
+                f"{prefilter_statistical} robustos"
+            ),
+            delta_color="off",
+        )
+        pf3.metric("Dados em alerta", prefilter_flagged)
+        pf4.metric("Guias ITBI utilizadas", prefilter_itbi_after)
+
+        method = preparation.diagnostics.get(
+            "prefilter_statistical_method",
+            "não informado",
+        )
+        lower_vu = preparation.diagnostics.get(
+            "prefilter_lower_vu",
+            np.nan,
+        )
+        upper_vu = preparation.diagnostics.get(
+            "prefilter_upper_vu",
+            np.nan,
+        )
+
+        if np.isfinite(lower_vu) and np.isfinite(upper_vu):
+            st.caption(
+                f"Filtro estatístico: {method}. Faixa robusta automática "
+                f"observada: {money_br(lower_vu)}/m² a "
+                f"{money_br(upper_vu)}/m²."
+            )
+        else:
+            st.caption(f"Filtro estatístico: {method}.")
+
+        if prefilter_total_excluded:
+            st.warning(
+                "Os registros excluídos não participaram do cálculo do "
+                "fator de oferta nem da seleção dos comparáveis."
+            )
+        else:
+            st.success(
+                "Nenhum registro precisou ser excluído pelo controle prévio."
+            )
+
+        if prefilter_flagged:
+            st.info(
+                "Os registros em alerta foram mantidos na amostra. Eles "
+                "podem ser consultados e auditados abaixo."
+            )
+
+        if (
+            not preparation.excluded_data.empty
+            or not preparation.flagged_data.empty
+        ):
+            with st.expander(
+                "Consultar dados excluídos e alertados",
+                expanded=False,
+            ):
+                if not preparation.excluded_data.empty:
+                    st.markdown("##### Dados excluídos")
+                    st.dataframe(
+                        preparation.excluded_data,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "_valor_unitario_original": (
+                                st.column_config.NumberColumn(
+                                    "Valor unitário",
+                                    format="R$ %.2f",
+                                )
+                            ),
+                            "_escore_robusto_prefiltro": (
+                                st.column_config.NumberColumn(
+                                    "Escore robusto",
+                                    format="%.3f",
+                                )
+                            ),
+                            "_limite_inferior_vu_prefiltro": (
+                                st.column_config.NumberColumn(
+                                    "Limite inferior",
+                                    format="R$ %.2f",
+                                )
+                            ),
+                            "_limite_superior_vu_prefiltro": (
+                                st.column_config.NumberColumn(
+                                    "Limite superior",
+                                    format="R$ %.2f",
+                                )
+                            ),
+                        },
+                    )
+
+                if not preparation.flagged_data.empty:
+                    st.markdown("##### Dados mantidos com alerta")
+                    st.dataframe(
+                        preparation.flagged_data,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "_valor_unitario_original": (
+                                st.column_config.NumberColumn(
+                                    "Valor unitário",
+                                    format="R$ %.2f",
+                                )
+                            ),
+                            "_escore_robusto_prefiltro": (
+                                st.column_config.NumberColumn(
+                                    "Escore robusto",
+                                    format="%.3f",
+                                )
+                            ),
+                        },
+                    )
+
     duplicates_removed = int(
         preparation.diagnostics.get("offer_duplicates_removed", 0)
     )
@@ -1970,7 +2189,12 @@ diagnostics = {
     **estimate.diagnostics,
 }
 
-excel_bytes = dataframe_to_excel(neighbors_export, diagnostics)
+excel_bytes = dataframe_to_excel(
+    neighbors_export,
+    diagnostics,
+    preparation.excluded_data,
+    preparation.flagged_data,
+)
 st.download_button(
     "Baixar resultado em Excel",
     data=excel_bytes,
@@ -1985,6 +2209,11 @@ with st.expander("Como o estimador trabalha"):
 - considera apenas a finalidade escolhida;
 - exclui ofertas de aluguel;
 - mantém somente a coleta mais recente de cada oferta repetida;
+- exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;
+- analisa o ln(valor unitário) das Guias ITBI por escore Z modificado;
+- exclui automaticamente extremos robustos somente com 15 ou mais Guias ITBI;
+- mantém apenas em alerta os extremos identificados em amostras de 8 a 14 Guias;
+- exporta os dados excluídos e alertados para auditoria;
 - aplica fator 0,90 quando a amostra contém somente ofertas;
 - havendo transações e ofertas suficientes, calcula a mediana da razão observada;
 - usa 20% apenas como freio do desconto empírico;

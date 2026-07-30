@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Iterable
+import re
 
 import numpy as np
 import pandas as pd
 
 
-MODULE_API_VERSION = "6.1.3"
+MODULE_API_VERSION = "6.2.0"
 
 
 TIPO_ITBI = "guia itbi"
@@ -33,6 +34,8 @@ class PreparationResult:
     data: pd.DataFrame
     discount: float
     diagnostics: dict[str, Any]
+    excluded_data: pd.DataFrame
+    flagged_data: pd.DataFrame
 
 
 @dataclass(frozen=True)
@@ -334,6 +337,477 @@ def deduplicate_offers(
     return cleaned, diagnostics
 
 
+
+PREFILTER_SYMBOLIC_VALUE_MAX = 1.00
+PREFILTER_MIN_ITBI_FOR_DIAGNOSTIC = 8
+PREFILTER_MIN_ITBI_FOR_AUTO_EXCLUSION = 15
+PREFILTER_ALERT_MODIFIED_Z = 2.5
+PREFILTER_EXCLUDE_MODIFIED_Z = 3.5
+PREFILTER_IQR_OUTER_MULTIPLIER = 3.0
+
+
+_NATURE_COLUMN_NAMES = {
+    "natureza_transacao",
+    "natureza_da_transacao",
+    "natureza_transmissao",
+    "natureza_da_transmissao",
+    "tipo_transacao",
+    "tipo_de_transacao",
+    "tipo_transmissao",
+    "tipo_de_transmissao",
+    "descricao_transacao",
+    "descricao_da_transacao",
+    "descricao_transmissao",
+    "descricao_da_transmissao",
+    "itbi_natureza",
+    "itbi_tipo_transacao",
+    "itbi_tipo_transmissao",
+    "negocio_juridico",
+    "natureza_negocio_juridico",
+}
+
+_FRACTION_COLUMN_NAMES = {
+    "fracao_transmitida",
+    "fracao_ideal",
+    "percentual_transmitido",
+    "percentual_transmissao",
+    "percentual_do_imovel",
+    "quota_transmitida",
+    "quota_parte",
+    "parte_ideal",
+    "quinhao",
+}
+
+_PROPERTY_COUNT_COLUMN_NAMES = {
+    "quantidade_imoveis",
+    "quantidade_de_imoveis",
+    "qtd_imoveis",
+    "numero_imoveis",
+    "numero_de_imoveis",
+    "imoveis_transmitidos",
+}
+
+_NON_MARKET_NATURE_PATTERN = (
+    r"\b(?:"
+    r"doacao|heranca|inventario|partilha|cessao gratuita|"
+    r"transmissao gratuita|usufruto|nua propriedade|"
+    r"integralizacao de capital|incorporacao de capital|"
+    r"fracao|parte ideal|quota parte|quinhao"
+    r")\b"
+)
+
+
+def _canonical_column_name(value: Any) -> str:
+    normalized = normalize_text(value)
+    tokens = re.findall(r"[a-z0-9]+", normalized)
+    return "_".join(tokens)
+
+
+def _matching_columns(
+    data: pd.DataFrame,
+    accepted_names: set[str],
+) -> list[str]:
+    return [
+        str(column)
+        for column in data.columns
+        if _canonical_column_name(column) in accepted_names
+    ]
+
+
+def _append_reason(
+    reasons: pd.Series,
+    mask: pd.Series | np.ndarray,
+    reason: str,
+) -> pd.Series:
+    boolean_mask = pd.Series(mask, index=reasons.index).fillna(False).astype(bool)
+    empty = reasons.eq("")
+    reasons.loc[boolean_mask & empty] = reason
+    reasons.loc[boolean_mask & ~empty] = (
+        reasons.loc[boolean_mask & ~empty] + "; " + reason
+    )
+    return reasons
+
+
+def _parse_transmitted_share(
+    series: pd.Series,
+    column_name: str,
+) -> pd.Series:
+    text = series.astype("string").str.strip()
+    result = pd.Series(np.nan, index=series.index, dtype=float)
+
+    fraction_match = text.str.extract(
+        r"^\s*(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*$"
+    )
+    numerator = to_numeric(fraction_match[0])
+    denominator = to_numeric(fraction_match[1])
+    fraction_valid = (
+        numerator.notna()
+        & denominator.notna()
+        & denominator.gt(0)
+    )
+    result.loc[fraction_valid] = (
+        numerator.loc[fraction_valid] / denominator.loc[fraction_valid]
+    )
+
+    percent_text = text.str.contains("%", regex=False, na=False)
+    numeric_text = (
+        text.str.replace("%", "", regex=False)
+        .str.replace(r"\s+", "", regex=True)
+    )
+    numeric = to_numeric(numeric_text)
+
+    canonical_name = _canonical_column_name(column_name)
+    percentage_column = "percentual" in canonical_name
+
+    unresolved = result.isna() & numeric.notna()
+    as_percent = unresolved & (
+        percent_text
+        | percentage_column
+        | numeric.gt(1.0)
+    )
+    result.loc[as_percent] = numeric.loc[as_percent] / 100.0
+
+    as_fraction = unresolved & ~as_percent
+    result.loc[as_fraction] = numeric.loc[as_fraction]
+    return result
+
+
+def _ordered_control_columns(data: pd.DataFrame) -> pd.DataFrame:
+    priority = [
+        "_row_excel",
+        "_etapa_controle",
+        "_motivo_exclusao",
+        "_motivo_alerta",
+        "_valor_unitario_original",
+        "_log_valor_unitario",
+        "_escore_robusto_prefiltro",
+        "_limite_inferior_vu_prefiltro",
+        "_limite_superior_vu_prefiltro",
+    ]
+    ordered = [column for column in priority if column in data.columns]
+    ordered.extend(column for column in data.columns if column not in ordered)
+    return data.loc[:, ordered].copy()
+
+
+def _safe_market_prefilter(
+    data: pd.DataFrame,
+    mapping: ColumnMapping,
+    reference_area_column: str,
+    value_kind: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    working = data.copy()
+    reasons = pd.Series("", index=working.index, dtype="string")
+
+    raw_value = pd.to_numeric(working[mapping.valor], errors="coerce")
+    reference_area = pd.to_numeric(
+        working[reference_area_column],
+        errors="coerce",
+    )
+
+    value_kind_norm = normalize_text(value_kind)
+    total_value_mode = value_kind_norm == "valor total"
+
+    reasons = _append_reason(
+        reasons,
+        ~np.isfinite(raw_value) | raw_value.le(0),
+        "Valor informado inválido, nulo ou não positivo",
+    )
+    reasons = _append_reason(
+        reasons,
+        np.isfinite(raw_value)
+        & raw_value.gt(0)
+        & raw_value.le(PREFILTER_SYMBOLIC_VALUE_MAX),
+        "Valor informado simbólico ou sem representatividade mercadológica",
+    )
+    reasons = _append_reason(
+        reasons,
+        ~np.isfinite(reference_area) | reference_area.le(0),
+        "Área de referência inválida, nula ou não positiva",
+    )
+
+    if total_value_mode:
+        working["_valor_unitario_original"] = raw_value / reference_area
+    elif value_kind_norm in {
+        "valor unitario",
+        "valor unitario por m2",
+        "valor unitario por m²",
+    }:
+        working["_valor_unitario_original"] = raw_value
+    else:
+        raise ValueError("Natureza do valor inválida.")
+
+    reasons = _append_reason(
+        reasons,
+        ~np.isfinite(working["_valor_unitario_original"])
+        | working["_valor_unitario_original"].le(0),
+        "Valor unitário inválido ou não positivo",
+    )
+
+    is_itbi = working["_tipo_norm"].eq(TIPO_ITBI)
+
+    nature_columns = _matching_columns(working, _NATURE_COLUMN_NAMES)
+    non_market_mask = pd.Series(False, index=working.index)
+    for column in nature_columns:
+        nature_text = working[column].map(normalize_text)
+        non_market_mask |= nature_text.str.contains(
+            _NON_MARKET_NATURE_PATTERN,
+            regex=True,
+            na=False,
+        )
+    reasons = _append_reason(
+        reasons,
+        is_itbi & non_market_mask,
+        "Natureza da transmissão não mercadológica ou interesse parcial",
+    )
+
+    fraction_columns = _matching_columns(working, _FRACTION_COLUMN_NAMES)
+    partial_interest_mask = pd.Series(False, index=working.index)
+    for column in fraction_columns:
+        share = _parse_transmitted_share(working[column], column)
+        partial_interest_mask |= share.gt(0) & share.lt(0.999999)
+    reasons = _append_reason(
+        reasons,
+        is_itbi & partial_interest_mask,
+        "Transmissão parcial identificada sem integralização segura",
+    )
+
+    property_count_columns = _matching_columns(
+        working,
+        _PROPERTY_COUNT_COLUMN_NAMES,
+    )
+    multiple_property_mask = pd.Series(False, index=working.index)
+    for column in property_count_columns:
+        count = to_numeric(working[column])
+        multiple_property_mask |= count.gt(1)
+    reasons = _append_reason(
+        reasons,
+        is_itbi & multiple_property_mask,
+        "Transmissão conjunta de múltiplos imóveis sem valor individualizado",
+    )
+
+    deterministic_mask = reasons.ne("")
+    deterministic_excluded = working.loc[deterministic_mask].copy()
+    if not deterministic_excluded.empty:
+        deterministic_excluded["_etapa_controle"] = "regra determinística"
+        deterministic_excluded["_motivo_exclusao"] = reasons.loc[
+            deterministic_mask
+        ].astype(str)
+        deterministic_excluded["_motivo_alerta"] = ""
+        deterministic_excluded["_log_valor_unitario"] = np.where(
+            deterministic_excluded["_valor_unitario_original"].gt(0),
+            np.log(
+                deterministic_excluded["_valor_unitario_original"].where(
+                    deterministic_excluded["_valor_unitario_original"].gt(0)
+                )
+            ),
+            np.nan,
+        )
+        deterministic_excluded["_escore_robusto_prefiltro"] = np.nan
+        deterministic_excluded["_limite_inferior_vu_prefiltro"] = np.nan
+        deterministic_excluded["_limite_superior_vu_prefiltro"] = np.nan
+
+    kept = working.loc[~deterministic_mask].copy()
+    kept["_log_valor_unitario"] = np.log(
+        kept["_valor_unitario_original"].astype(float)
+    )
+    kept["_escore_robusto_prefiltro"] = np.nan
+    kept["_limite_inferior_vu_prefiltro"] = np.nan
+    kept["_limite_superior_vu_prefiltro"] = np.nan
+
+    itbi_index = kept.index[kept["_tipo_norm"].eq(TIPO_ITBI)]
+    n_itbi = int(len(itbi_index))
+
+    statistical_method = "não aplicado: menos de 8 Guias ITBI"
+    auto_exclusion_enabled = False
+    robust_median_log = np.nan
+    robust_mad_log = np.nan
+    lower_vu = np.nan
+    upper_vu = np.nan
+
+    extreme_mask = pd.Series(False, index=kept.index)
+    attention_mask = pd.Series(False, index=kept.index)
+
+    if n_itbi >= PREFILTER_MIN_ITBI_FOR_DIAGNOSTIC:
+        log_values = kept.loc[itbi_index, "_log_valor_unitario"].astype(float)
+        robust_median_log = float(np.median(log_values))
+        absolute_deviation = np.abs(log_values - robust_median_log)
+        robust_mad_log = float(np.median(absolute_deviation))
+
+        if np.isfinite(robust_mad_log) and robust_mad_log > 1e-12:
+            modified_z = (
+                0.6745
+                * (log_values - robust_median_log)
+                / robust_mad_log
+            )
+            kept.loc[itbi_index, "_escore_robusto_prefiltro"] = modified_z
+
+            lower_log = (
+                robust_median_log
+                - PREFILTER_EXCLUDE_MODIFIED_Z
+                * robust_mad_log
+                / 0.6745
+            )
+            upper_log = (
+                robust_median_log
+                + PREFILTER_EXCLUDE_MODIFIED_Z
+                * robust_mad_log
+                / 0.6745
+            )
+            lower_vu = float(np.exp(lower_log))
+            upper_vu = float(np.exp(upper_log))
+
+            absolute_score = modified_z.abs()
+            extreme_index = absolute_score.index[
+                absolute_score.gt(PREFILTER_EXCLUDE_MODIFIED_Z)
+            ]
+            attention_index = absolute_score.index[
+                absolute_score.gt(PREFILTER_ALERT_MODIFIED_Z)
+                & absolute_score.le(PREFILTER_EXCLUDE_MODIFIED_Z)
+            ]
+            extreme_mask.loc[extreme_index] = True
+            attention_mask.loc[attention_index] = True
+            statistical_method = (
+                "escore Z modificado sobre ln(valor unitário)"
+            )
+        else:
+            q1, q3 = np.quantile(log_values, [0.25, 0.75])
+            iqr = float(q3 - q1)
+            if np.isfinite(iqr) and iqr > 1e-12:
+                lower_log = q1 - PREFILTER_IQR_OUTER_MULTIPLIER * iqr
+                upper_log = q3 + PREFILTER_IQR_OUTER_MULTIPLIER * iqr
+                lower_vu = float(np.exp(lower_log))
+                upper_vu = float(np.exp(upper_log))
+                outside = (
+                    log_values.lt(lower_log)
+                    | log_values.gt(upper_log)
+                )
+                extreme_mask.loc[outside.index[outside]] = True
+                statistical_method = (
+                    "cercas externas de 3×IQR sobre ln(valor unitário), "
+                    "utilizadas porque o MAD foi zero"
+                )
+            else:
+                statistical_method = (
+                    "não aplicado: MAD e IQR iguais a zero"
+                )
+
+        kept.loc[itbi_index, "_limite_inferior_vu_prefiltro"] = lower_vu
+        kept.loc[itbi_index, "_limite_superior_vu_prefiltro"] = upper_vu
+        auto_exclusion_enabled = (
+            n_itbi >= PREFILTER_MIN_ITBI_FOR_AUTO_EXCLUSION
+        )
+
+    flagged_mask = attention_mask.copy()
+    if not auto_exclusion_enabled:
+        flagged_mask |= extreme_mask
+
+    flagged = kept.loc[flagged_mask].copy()
+    if not flagged.empty:
+        flagged["_etapa_controle"] = "alerta robusto"
+        flagged["_motivo_exclusao"] = ""
+        flagged["_motivo_alerta"] = np.where(
+            extreme_mask.loc[flagged.index],
+            (
+                "Valor unitário extremo identificado; não excluído "
+                "automaticamente porque a amostra possui menos de 15 "
+                "Guias ITBI"
+            ),
+            (
+                "Valor unitário na faixa de atenção robusta "
+                "(2,5 < |M| ≤ 3,5)"
+            ),
+        )
+
+    statistical_excluded = kept.iloc[0:0].copy()
+    if auto_exclusion_enabled and extreme_mask.any():
+        statistical_excluded = kept.loc[extreme_mask].copy()
+        statistical_excluded["_etapa_controle"] = (
+            "filtro robusto automático"
+        )
+        statistical_excluded["_motivo_exclusao"] = (
+            "Valor unitário extremo no pré-filtro robusto"
+        )
+        statistical_excluded["_motivo_alerta"] = ""
+        kept = kept.loc[~extreme_mask].copy()
+
+    excluded_frames = [
+        frame
+        for frame in (deterministic_excluded, statistical_excluded)
+        if not frame.empty
+    ]
+    if excluded_frames:
+        excluded = pd.concat(excluded_frames, ignore_index=True, sort=False)
+        excluded = _ordered_control_columns(excluded)
+    else:
+        excluded = _ordered_control_columns(
+            working.iloc[0:0].assign(
+                _etapa_controle=pd.Series(dtype="string"),
+                _motivo_exclusao=pd.Series(dtype="string"),
+                _motivo_alerta=pd.Series(dtype="string"),
+                _log_valor_unitario=pd.Series(dtype=float),
+                _escore_robusto_prefiltro=pd.Series(dtype=float),
+                _limite_inferior_vu_prefiltro=pd.Series(dtype=float),
+                _limite_superior_vu_prefiltro=pd.Series(dtype=float),
+            )
+        )
+
+    if not flagged.empty:
+        flagged = _ordered_control_columns(flagged)
+    else:
+        flagged = _ordered_control_columns(
+            working.iloc[0:0].assign(
+                _etapa_controle=pd.Series(dtype="string"),
+                _motivo_exclusao=pd.Series(dtype="string"),
+                _motivo_alerta=pd.Series(dtype="string"),
+                _log_valor_unitario=pd.Series(dtype=float),
+                _escore_robusto_prefiltro=pd.Series(dtype=float),
+                _limite_inferior_vu_prefiltro=pd.Series(dtype=float),
+                _limite_superior_vu_prefiltro=pd.Series(dtype=float),
+            )
+        )
+
+    reason_counts = (
+        excluded["_motivo_exclusao"].value_counts().to_dict()
+        if not excluded.empty
+        else {}
+    )
+
+    diagnostics = {
+        "prefilter_enabled": True,
+        "prefilter_symbolic_value_max": PREFILTER_SYMBOLIC_VALUE_MAX,
+        "prefilter_input_rows": int(len(working)),
+        "prefilter_deterministic_excluded": int(
+            len(deterministic_excluded)
+        ),
+        "prefilter_statistical_excluded": int(
+            len(statistical_excluded)
+        ),
+        "prefilter_total_excluded": int(len(excluded)),
+        "prefilter_flagged": int(len(flagged)),
+        "prefilter_itbi_before": int(is_itbi.sum()),
+        "prefilter_itbi_after": int(
+            kept["_tipo_norm"].eq(TIPO_ITBI).sum()
+        ),
+        "prefilter_itbi_for_robust_analysis": n_itbi,
+        "prefilter_auto_exclusion_enabled": bool(
+            auto_exclusion_enabled
+        ),
+        "prefilter_statistical_method": statistical_method,
+        "prefilter_log_median": robust_median_log,
+        "prefilter_log_mad": robust_mad_log,
+        "prefilter_lower_vu": lower_vu,
+        "prefilter_upper_vu": upper_vu,
+        "prefilter_alert_modified_z": PREFILTER_ALERT_MODIFIED_Z,
+        "prefilter_exclude_modified_z": PREFILTER_EXCLUDE_MODIFIED_Z,
+        "prefilter_nature_columns_detected": nature_columns,
+        "prefilter_fraction_columns_detected": fraction_columns,
+        "prefilter_property_count_columns_detected": (
+            property_count_columns
+        ),
+        "prefilter_exclusion_reasons": reason_counts,
+    }
+    return kept, excluded, flagged, diagnostics
+
 def validate_mapping(df: pd.DataFrame, mapping: ColumnMapping) -> None:
     required = [
         mapping.tipo_informacao,
@@ -377,7 +851,9 @@ def prepare_data(
     data = df.copy()
     data["_row_excel"] = np.arange(2, len(data) + 2)
     data["_tipo_norm"] = data[mapping.tipo_informacao].map(normalize_text)
-    data["_finalidade_norm"] = data[mapping.finalidade_oferta].map(normalize_text)
+    data["_finalidade_norm"] = data[mapping.finalidade_oferta].map(
+        normalize_text
+    )
 
     data = data.loc[
         data["_finalidade_norm"].eq(normalize_text(selected_purpose))
@@ -418,36 +894,33 @@ def prepare_data(
     for column in numeric_columns:
         data[column] = to_numeric(data[column])
 
-    value_kind_norm = normalize_text(value_kind)
-    if value_kind_norm == "valor total":
-        data["_valor_unitario_original"] = (
-            data[mapping.valor] / data[reference_area_column]
+    data, excluded_data, flagged_data, prefilter_diag = (
+        _safe_market_prefilter(
+            data=data,
+            mapping=mapping,
+            reference_area_column=reference_area_column,
+            value_kind=value_kind,
         )
-    elif value_kind_norm in {
-        "valor unitario",
-        "valor unitario por m2",
-        "valor unitario por m²",
-    }:
-        data["_valor_unitario_original"] = data[mapping.valor]
-    else:
-        raise ValueError("Natureza do valor inválida.")
-
-    valid = (
-        np.isfinite(data["_valor_unitario_original"])
-        & data["_valor_unitario_original"].gt(0)
     )
-    data = data.loc[valid].copy()
 
     itbi = data.loc[
-        data["_tipo_norm"].eq(TIPO_ITBI), "_valor_unitario_original"
+        data["_tipo_norm"].eq(TIPO_ITBI),
+        "_valor_unitario_original",
     ]
     offers = data.loc[
-        data["_tipo_norm"].eq(TIPO_OFERTA), "_valor_unitario_original"
+        data["_tipo_norm"].eq(TIPO_OFERTA),
+        "_valor_unitario_original",
     ]
-    discount, discount_diag = estimate_offer_discount(itbi, offers, discount_cap)
+    discount, discount_diag = estimate_offer_discount(
+        itbi,
+        offers,
+        discount_cap,
+    )
 
     data["_fator_ajuste"] = np.where(
-        data["_tipo_norm"].eq(TIPO_OFERTA), 1.0 - discount, 1.0
+        data["_tipo_norm"].eq(TIPO_OFERTA),
+        1.0 - discount,
+        1.0,
     )
     data["_valor_unitario_ajustado"] = (
         data["_valor_unitario_original"] * data["_fator_ajuste"]
@@ -456,6 +929,7 @@ def prepare_data(
     diagnostics = {
         **discount_diag,
         **dedup_diag,
+        **prefilter_diag,
         "purpose": selected_purpose,
         "n_filtered": int(len(data)),
         "n_itbi": int(data["_tipo_norm"].eq(TIPO_ITBI).sum()),
@@ -463,8 +937,13 @@ def prepare_data(
         "reference_area_column": reference_area_column,
         "value_kind": value_kind,
     }
-    return PreparationResult(data=data, discount=discount, diagnostics=diagnostics)
-
+    return PreparationResult(
+        data=data,
+        discount=discount,
+        diagnostics=diagnostics,
+        excluded_data=excluded_data,
+        flagged_data=flagged_data,
+    )
 
 def _robust_center_scale(values: np.ndarray) -> tuple[float, float]:
     values = values[np.isfinite(values)]
