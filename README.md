@@ -1,4 +1,4 @@
-# estimador_knn_siri — 1.6
+# estimador_knn_siri — 1.7
 
 Estimador imobiliário por KNN.
 
@@ -12,7 +12,7 @@ Estimador imobiliário por KNN.
 
 ## Processamentos automáticos
 
-A aplicação contém internamente os seguintes tratamentos:
+A aplicação mantém internamente os tratamentos da versão técnica:
 
 - filtro pela finalidade;
 - exclusão de ofertas de aluguel;
@@ -26,6 +26,7 @@ A aplicação contém internamente os seguintes tratamentos:
 - alertas de extrapolação;
 - pontuação de confiança;
 - exportação dos comparáveis e diagnósticos para Excel.
+
 
 ## Parâmetros internos fixos
 
@@ -50,6 +51,19 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Streamlit Community Cloud
+
+Publique na raiz do repositório:
+
+- `app.py`;
+- `knn_valuation.py`;
+- `schema_utils.py`;
+- `requirements.txt`;
+- pasta `.streamlit`.
+
+Defina `app.py` como arquivo principal.
+
+
 ### Faixas do desconto
 
 | Desconto empírico | Alerta |
@@ -58,15 +72,14 @@ streamlit run app.py
 | Acima de 0% até 10% | Elasticidade usual ou moderada |
 | Acima de 10% até 15% | Elasticidade relevante |
 | Acima de 15% até 20% | Elasticidade elevada |
-| Acima de 20% bruto | Alerta forte; é aplicado um teto de 20% |
+| Acima de 20% bruto | Alerta forte; o teto de 20% continua sendo aplicado |
 
 O desconto é definido pela mediana de
-'1 - VU_ITBI / VU_Oferta' em quantis pareados, limitado entre 0% e 20%.
+`1 - VU_ITBI / VU_Oferta` em quantis pareados, limitado entre 0% e 20%.
 
 ### Composição efetiva da amostra
 
-Os números apresentados nos alertas correspondem aos dados que permanecem
-após:
+Os números apresentados nos alertas correspondem aos dados que permanecem após:
 
 - filtro pela finalidade;
 - exclusão de ofertas de aluguel;
@@ -80,11 +93,14 @@ após:
 | 10 a 14 | Amostra restrita |
 | 15 ou mais | Quantidade mínima operacional atendida |
 
-Quando ambos os grupos possuem ao menos 15 dados, o aplicativo também informa
-se existe desequilíbrio superior a 3:1 ou 5:1 entre as quantidades.
+Quando ambos os grupos possuem ao menos 15 dados, o aplicativo também informa se existe desequilíbrio superior a 3:1 ou 5:1 entre as quantidades.
 
 Essas faixas são diagnósticas: não bloqueiam nem modificam o cálculo.
 
+
+## Regra do fator de oferta
+
+A regra distingue claramente dois cenários.
 
 ### Amostra composta somente por ofertas
 
@@ -98,8 +114,7 @@ ou seja, desconto convencional de 10%.
 
 ### Amostra com Guias ITBI e ofertas
 
-Quando existem pelo menos duas Guias ITBI e duas ofertas válidas, o desconto é
-calculado pela mediana dos quantis pareados:
+Quando existem pelo menos duas Guias ITBI e duas ofertas válidas, o desconto é calculado pela mediana dos quantis pareados:
 
 \[
 d = \operatorname{mediana}
@@ -108,11 +123,51 @@ d = \operatorname{mediana}
 \right)
 \]
 
-O resultado empírico é limitado ao intervalo de 0% a 20%. Portanto, 20% não é
-um desconto fixo: é exclusivamente o freio superior da razão calculada.
+O resultado empírico é limitado ao intervalo de 0% a 20%. Portanto, 20% não é um desconto fixo: é exclusivamente o freio superior da razão calculada.
 
 ### Amostra mista insuficiente
 
-Quando existe alguma Guia ITBI, mas não há pelo menos dois dados válidos em
-cada grupo, o desconto permanece em zero. O fator convencional de 10% é
-reservado à situação em que não existe nenhuma Guia ITBI.
+Quando existe alguma Guia ITBI, mas não há pelo menos dois dados válidos em cada grupo, o desconto permanece em zero. O fator convencional de 10% é reservado à situação em que não existe nenhuma Guia ITBI.
+
+
+## Colunas duplicadas
+
+Remove repetições antes de montar a tabela e garante nomes únicos após as renomeações.
+
+
+## Auditoria da exclusão de aluguéis
+
+- **Dados utilizáveis** = Guias ITBI + ofertas de venda;
+- **Aluguéis excluídos** = registros identificados como aluguel, locação ou arrendamento;
+- verificação defensiva impede a continuação caso algum desses registros permaneça após a preparação da amostra.
+
+
+## Pré-filtro seguro da amostra
+
+A preparação passa a ocorrer antes do fator de oferta e do KNN.
+
+### Exclusões determinísticas
+
+São excluídos e registrados:
+
+- valor inválido, nulo ou não positivo;
+- valor simbólico de até R$ 1,00;
+- área de referência inválida, nula ou não positiva;
+- valor unitário inválido;
+- natureza de transmissão identificada como doação, herança, partilha, usufruto, nua-propriedade, transmissão gratuita ou interesse parcial;
+- fração transmitida inferior à totalidade, quando existe campo confiável;
+- transmissão conjunta de múltiplos imóveis sem valor individualizado.
+
+### Filtro robusto das Guias ITBI
+
+O filtro utiliza `ln(valor unitário)` na finalidade selecionada.
+
+- menos de 8 Guias: somente regras determinísticas;
+- 8 a 14 Guias: extremos são sinalizados, mas não excluídos;
+- 15 ou mais Guias: `|M| > 3,5` é excluído;
+- `2,5 < |M| ≤ 3,5` permanece com alerta;
+- MAD zero: cercas externas de `3×IQR` no logaritmo.
+
+### Rastreabilidade
+
+A exportação contém `Dados_excluidos` e `Dados_alertados`, com linha original, motivo, etapa, valor unitário, escore robusto e limites.
