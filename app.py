@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 import hashlib
+import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -10,7 +13,7 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.9"
+APP_EDITION = "LITE 1.9.2"
 CORE_VERSION = "6.4.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -31,16 +34,68 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.9.2-20260730"
+CORE_MODULE_FILE = "estimador_knn_core_v640.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v640.py"
+
+
+def _load_exact_source_module(
+    filename: str,
+    internal_name: str,
+):
+    """
+    Lê, compila e executa diretamente o arquivo ao lado do app.py.
+
+    Não utiliza o mecanismo normal de importação, não consulta outros
+    diretórios do Python e não reutiliza módulos antigos do sys.modules.
+    """
+    module_path = Path(__file__).resolve().parent / filename
+    if not module_path.is_file():
+        raise FileNotFoundError(
+            f"Arquivo interno não encontrado: {module_path}"
+        )
+
+    source_text = module_path.read_text(encoding="utf-8")
+    source_hash = hashlib.sha256(
+        source_text.encode("utf-8")
+    ).hexdigest()[:12]
+
+    module = types.ModuleType(internal_name)
+    module.__file__ = str(module_path)
+    module.__package__ = ""
+    module.__loader__ = None
+
+    # Necessário para dataclasses e, ao mesmo tempo, elimina qualquer
+    # objeto anterior que tenha usado o mesmo nome interno.
+    sys.modules.pop(internal_name, None)
+    sys.modules[internal_name] = module
+
+    compiled = compile(
+        source_text,
+        str(module_path),
+        "exec",
+        dont_inherit=True,
+    )
+    exec(compiled, module.__dict__)
+    return module, module_path, source_hash
+
+
 try:
-    import knn_valuation as _knn
-    import schema_utils as _schema
+    _knn, _knn_path, _knn_hash = _load_exact_source_module(
+        CORE_MODULE_FILE,
+        "_estimador_knn_core_runtime_v640",
+    )
+    _schema, _schema_path, _schema_hash = _load_exact_source_module(
+        SCHEMA_MODULE_FILE,
+        "_estimador_knn_schema_runtime_v640",
+    )
 except Exception as exc:
     st.error(
-        "Os arquivos internos do aplicativo não puderam ser carregados. "
-        "Publique app.py, knn_valuation.py e schema_utils.py juntos."
+        "Os módulos exclusivos do aplicativo não puderam ser carregados."
     )
     st.code(f"{type(exc).__name__}: {exc}")
     st.stop()
+
 
 _required_knn = {
     "ColumnMapping",
@@ -66,19 +121,27 @@ _missing_schema = sorted(
 )
 _knn_version = getattr(_knn, "MODULE_API_VERSION", "anterior")
 _schema_version = getattr(_schema, "MODULE_API_VERSION", "anterior")
+_knn_build = getattr(_knn, "MODULE_BUILD_ID", "anterior")
+_schema_build = getattr(_schema, "MODULE_BUILD_ID", "anterior")
 
 if (
     _missing_knn
     or _missing_schema
     or _knn_version != CORE_VERSION
     or _schema_version != CORE_VERSION
+    or _knn_build != MODULE_BUILD_ID
+    or _schema_build != MODULE_BUILD_ID
 ):
-    st.error("Os arquivos publicados pertencem a versões diferentes.")
+    st.error("Os módulos exclusivos publicados não correspondem a esta edição.")
     st.code(
         "\n".join(
             [
-                f"knn_valuation.py: {_knn_version}",
-                f"schema_utils.py: {_schema_version}",
+                f"Núcleo carregado: {_knn_path}",
+                f"Versão/build do núcleo: {_knn_version} / {_knn_build}",
+                f"SHA do núcleo: {_knn_hash}",
+                f"Schema carregado: {_schema_path}",
+                f"Versão/build do schema: {_schema_version} / {_schema_build}",
+                f"SHA do schema: {_schema_hash}",
                 "Itens ausentes no KNN: "
                 + (", ".join(_missing_knn) if _missing_knn else "nenhum"),
                 "Itens ausentes no schema: "
