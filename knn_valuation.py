@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-MODULE_API_VERSION = "6.2.0"
+MODULE_API_VERSION = "6.3.0"
 
 
 TIPO_ITBI = "guia itbi"
@@ -48,6 +48,7 @@ class EstimateResult:
     active_features: list[str]
     geographic_scale_km: float
     diagnostics: dict[str, Any]
+    local_excluded_data: pd.DataFrame
 
 
 @dataclass(frozen=True)
@@ -234,41 +235,184 @@ def _parse_registration_dates(series: pd.Series) -> pd.Series:
     return parsed
 
 
+def _valid_registration_key(series: pd.Series) -> pd.Series:
+    normalized = series.map(normalize_text).astype("string")
+    ignored = {
+        "",
+        "0",
+        "0.0",
+        "nan",
+        "none",
+        "<na>",
+        "sem inscricao",
+        "sem inscrição",
+    }
+    return normalized.where(~normalized.isin(ignored), "")
+
+
+def _normalized_money_key(series: pd.Series) -> pd.Series:
+    numeric = to_numeric(series)
+    return numeric.map(
+        lambda value: (
+            f"{float(value):.2f}"
+            if pd.notna(value) and np.isfinite(value) and float(value) > 0
+            else ""
+        )
+    ).astype("string")
+
+
 def deduplicate_offers(
     data: pd.DataFrame,
     date_column: str | None,
     identifier_columns: Iterable[str],
+    registration_column: str | None = None,
+    value_column: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Deduplicação hierárquica.
+
+    1. Prioriza tipo da informação + inscrição SIAT + valor.
+       Essa etapa alcança Guias ITBI e ofertas.
+    2. Nas ofertas restantes, usa identificadores genuínos de anúncio como
+       fallback. Colunas genéricas de origem não devem ser fornecidas.
+    """
     diagnostics: dict[str, Any] = {
         "offer_deduplication_enabled": True,
         "offer_duplicates_removed": 0,
-        "offer_duplicate_groups": 0,
+        "market_duplicates_removed_primary": 0,
+        "market_duplicate_groups_primary": 0,
+        "offer_duplicates_removed_fallback": 0,
+        "offer_duplicate_groups_fallback": 0,
         "offer_rows_without_identifier": 0,
         "offer_rows_without_valid_date": 0,
         "offer_deduplication_date_column": date_column or "",
         "offer_deduplication_identifier_columns": "",
+        "deduplication_primary_columns": "",
     }
 
+    cleaned = data.copy()
+
+    if date_column and date_column in cleaned.columns:
+        cleaned["_data_registro_deduplicacao"] = _parse_registration_dates(
+            cleaned[date_column]
+        )
+    else:
+        cleaned["_data_registro_deduplicacao"] = pd.NaT
+        diagnostics["deduplication_warning"] = (
+            "A coluna de data não foi encontrada. Em empates, foi mantida a "
+            "última linha do arquivo."
+        )
+
+    diagnostics["offer_rows_without_valid_date"] = int(
+        cleaned.loc[
+            cleaned["_tipo_norm"].eq(TIPO_OFERTA),
+            "_data_registro_deduplicacao",
+        ].isna().sum()
+    )
+
+    # Etapa primária: tipo + inscrição + valor.
+    primary_available = (
+        registration_column
+        and value_column
+        and registration_column in cleaned.columns
+        and value_column in cleaned.columns
+    )
+
+    if primary_available:
+        registration_key = _valid_registration_key(
+            cleaned[registration_column]
+        )
+        value_key = _normalized_money_key(cleaned[value_column])
+        valid_primary = registration_key.ne("") & value_key.ne("")
+
+        primary_key = pd.Series("", index=cleaned.index, dtype="string")
+        primary_key.loc[valid_primary] = (
+            cleaned.loc[valid_primary, "_tipo_norm"].astype("string")
+            + "::"
+            + registration_key.loc[valid_primary]
+            + "::"
+            + value_key.loc[valid_primary]
+        )
+        cleaned["_chave_deduplicacao_prioritaria"] = primary_key
+
+        primary_candidates = cleaned.loc[valid_primary].copy()
+        if not primary_candidates.empty:
+            primary_candidates = primary_candidates.sort_values(
+                [
+                    "_chave_deduplicacao_prioritaria",
+                    "_data_registro_deduplicacao",
+                    "_row_excel",
+                ],
+                ascending=[True, True, True],
+                na_position="first",
+                kind="mergesort",
+            )
+            group_sizes = primary_candidates.groupby(
+                "_chave_deduplicacao_prioritaria"
+            ).size()
+            diagnostics["market_duplicate_groups_primary"] = int(
+                (group_sizes > 1).sum()
+            )
+
+            primary_duplicated = primary_candidates.duplicated(
+                subset=["_chave_deduplicacao_prioritaria"],
+                keep="last",
+            )
+            primary_removed = primary_candidates.index[primary_duplicated]
+            diagnostics["market_duplicates_removed_primary"] = int(
+                len(primary_removed)
+            )
+            cleaned = cleaned.drop(index=primary_removed).copy()
+
+        diagnostics["deduplication_primary_columns"] = (
+            f"_tipo_norm, {registration_column}, {value_column}"
+        )
+    else:
+        diagnostics["deduplication_primary_warning"] = (
+            "A deduplicação prioritária por inscrição e valor não foi "
+            "aplicada porque uma das colunas não foi encontrada."
+        )
+
+    # Etapa de fallback: somente ofertas e somente IDs genuínos.
     identifier_columns = [
-        column for column in identifier_columns if column and column in data.columns
+        column
+        for column in identifier_columns
+        if column and column in cleaned.columns
     ]
     diagnostics["offer_deduplication_identifier_columns"] = ", ".join(
         identifier_columns
     )
-    if not identifier_columns:
-        diagnostics["deduplication_warning"] = (
-            "A deduplicação não foi aplicada: nenhuma coluna identificadora "
-            "foi encontrada."
-        )
-        return data, diagnostics
 
-    offers = data.loc[data["_tipo_norm"].eq(TIPO_OFERTA)].copy()
+    if not identifier_columns:
+        diagnostics["offer_duplicates_removed"] = int(
+            diagnostics["market_duplicates_removed_primary"]
+        )
+        return cleaned, diagnostics
+
+    offers = cleaned.loc[cleaned["_tipo_norm"].eq(TIPO_OFERTA)].copy()
     if offers.empty:
-        return data, diagnostics
+        diagnostics["offer_duplicates_removed"] = int(
+            diagnostics["market_duplicates_removed_primary"]
+        )
+        return cleaned, diagnostics
 
     key = pd.Series("", index=offers.index, dtype="string")
     source = pd.Series("", index=offers.index, dtype="string")
-    ignored = {"", "transacao", "transação", "nan", "none", "<na>"}
+    ignored = {
+        "",
+        "nan",
+        "none",
+        "<na>",
+        "0",
+        "transacao",
+        "transação",
+        "oferta",
+        "crawler",
+        "auxiliador",
+        "malcon",
+        "credito real",
+        "pmi",
+    }
 
     for column in identifier_columns:
         normalized = offers[column].map(normalize_text).astype("string")
@@ -284,25 +428,10 @@ def deduplicate_offers(
 
     candidates = offers.loc[~without_id].copy()
     if candidates.empty:
-        diagnostics["deduplication_warning"] = (
-            "Os identificadores das ofertas estão vazios; nenhuma linha foi removida."
+        diagnostics["offer_duplicates_removed"] = int(
+            diagnostics["market_duplicates_removed_primary"]
         )
-        return data, diagnostics
-
-    if date_column and date_column in candidates.columns:
-        candidates["_data_registro_deduplicacao"] = _parse_registration_dates(
-            candidates[date_column]
-        )
-    else:
-        candidates["_data_registro_deduplicacao"] = pd.NaT
-        diagnostics["deduplication_warning"] = (
-            "A coluna de data não foi encontrada. Em empates, foi mantida a "
-            "última linha do arquivo."
-        )
-
-    diagnostics["offer_rows_without_valid_date"] = int(
-        candidates["_data_registro_deduplicacao"].isna().sum()
-    )
+        return cleaned, diagnostics
 
     candidates = candidates.sort_values(
         [
@@ -315,27 +444,39 @@ def deduplicate_offers(
         kind="mergesort",
     )
     group_sizes = candidates.groupby("_chave_oferta_deduplicacao").size()
-    diagnostics["offer_duplicate_groups"] = int((group_sizes > 1).sum())
+    diagnostics["offer_duplicate_groups_fallback"] = int(
+        (group_sizes > 1).sum()
+    )
 
     duplicated = candidates.duplicated(
-        subset=["_chave_oferta_deduplicacao"], keep="last"
+        subset=["_chave_oferta_deduplicacao"],
+        keep="last",
     )
     removed_indices = candidates.index[duplicated]
-    diagnostics["offer_duplicates_removed"] = int(len(removed_indices))
+    diagnostics["offer_duplicates_removed_fallback"] = int(
+        len(removed_indices)
+    )
+    cleaned = cleaned.drop(index=removed_indices).copy()
 
-    cleaned = data.drop(index=removed_indices).copy()
     kept = candidates.loc[
         ~duplicated,
         [
             "_chave_oferta_deduplicacao",
             "_fonte_chave_oferta",
-            "_data_registro_deduplicacao",
         ],
     ]
     for column in kept.columns:
         cleaned.loc[kept.index, column] = kept[column]
-    return cleaned, diagnostics
 
+    diagnostics["offer_duplicates_removed"] = int(
+        diagnostics["market_duplicates_removed_primary"]
+        + diagnostics["offer_duplicates_removed_fallback"]
+    )
+    diagnostics["offer_duplicate_groups"] = int(
+        diagnostics["market_duplicate_groups_primary"]
+        + diagnostics["offer_duplicate_groups_fallback"]
+    )
+    return cleaned, diagnostics
 
 
 PREFILTER_SYMBOLIC_VALUE_MAX = 1.00
@@ -843,6 +984,8 @@ def prepare_data(
     remove_offer_duplicates: bool = True,
     duplicate_date_column: str | None = None,
     duplicate_identifier_columns: Iterable[str] = (),
+    duplicate_registration_column: str | None = None,
+    duplicate_value_column: str | None = None,
 ) -> PreparationResult:
     validate_mapping(df, mapping)
     if reference_area_column not in df.columns:
@@ -874,6 +1017,8 @@ def prepare_data(
             data,
             duplicate_date_column,
             duplicate_identifier_columns,
+            registration_column=duplicate_registration_column,
+            value_column=duplicate_value_column,
         )
 
     numeric_columns = {
@@ -1288,6 +1433,192 @@ def _extrapolation_diagnostics(
     }
 
 
+
+LOCAL_FILTER_MIN_REFERENCE = 8
+LOCAL_FILTER_STRICT_AREA_MIN_RATIO = 0.50
+LOCAL_FILTER_STRICT_AREA_MAX_RATIO = 2.00
+LOCAL_FILTER_RELAXED_AREA_MIN_RATIO = 1.0 / 3.0
+LOCAL_FILTER_RELAXED_AREA_MAX_RATIO = 3.00
+LOCAL_FILTER_STRICT_GEO_KM = 5.0
+LOCAL_FILTER_RELAXED_GEO_KM = 10.0
+LOCAL_FILTER_LOWER_MODIFIED_Z = 3.5
+LOCAL_FILTER_MEDIAN_FRACTION_FLOOR = 0.10
+
+
+def _local_lower_tail_filter(
+    data: pd.DataFrame,
+    mapping: ColumnMapping,
+    active_features: list[tuple[str, str]],
+    target: dict[str, float | None],
+    similarity_weight: float,
+    min_k: int,
+    max_k: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """
+    Remove somente a cauda inferior incompatível com o mercado local do
+    avaliando. A referência é formada por candidatos física e espacialmente
+    compatíveis, sem usar o valor do imóvel avaliando.
+    """
+    diagnostics: dict[str, Any] = {
+        "local_low_filter_enabled": True,
+        "local_low_filter_applied": False,
+        "local_low_filter_reference_mode": "não aplicado",
+        "local_low_filter_reference_count": 0,
+        "local_low_filter_excluded": 0,
+        "local_low_filter_lower_bound": np.nan,
+        "local_low_filter_median_vu": np.nan,
+    }
+
+    empty_excluded = data.iloc[0:0].copy()
+    if len(data) < max(int(min_k) + 1, LOCAL_FILTER_MIN_REFERENCE):
+        diagnostics["local_low_filter_reference_mode"] = (
+            "não aplicado: poucos candidatos"
+        )
+        return data, empty_excluded, diagnostics
+
+    distances, _, geo_distances, _ = _distance_profile(
+        data,
+        mapping,
+        active_features,
+        target,
+        similarity_weight,
+    )
+
+    strict_mask = np.ones(len(data), dtype=bool)
+    relaxed_mask = np.ones(len(data), dtype=bool)
+
+    for target_key, column in active_features:
+        target_value = target.get(target_key)
+        if (
+            target_value is None
+            or not np.isfinite(float(target_value))
+            or float(target_value) <= 0
+        ):
+            continue
+
+        values = data[column].to_numpy(dtype=float)
+        ratio = values / float(target_value)
+        strict_mask &= (
+            np.isfinite(ratio)
+            & (ratio >= LOCAL_FILTER_STRICT_AREA_MIN_RATIO)
+            & (ratio <= LOCAL_FILTER_STRICT_AREA_MAX_RATIO)
+        )
+        relaxed_mask &= (
+            np.isfinite(ratio)
+            & (ratio >= LOCAL_FILTER_RELAXED_AREA_MIN_RATIO)
+            & (ratio <= LOCAL_FILTER_RELAXED_AREA_MAX_RATIO)
+        )
+
+    strict_mask &= geo_distances <= LOCAL_FILTER_STRICT_GEO_KM
+    relaxed_mask &= geo_distances <= LOCAL_FILTER_RELAXED_GEO_KM
+
+    if int(strict_mask.sum()) >= LOCAL_FILTER_MIN_REFERENCE:
+        reference_positions = np.flatnonzero(strict_mask)
+        reference_mode = "área entre 50% e 200% e distância até 5 km"
+    elif int(relaxed_mask.sum()) >= LOCAL_FILTER_MIN_REFERENCE:
+        reference_positions = np.flatnonzero(relaxed_mask)
+        reference_mode = (
+            "área entre 33% e 300% e distância até 10 km"
+        )
+    else:
+        cohort_size = min(
+            len(data),
+            max(
+                LOCAL_FILTER_MIN_REFERENCE,
+                min(60, max(int(max_k) * 2, 20)),
+            ),
+        )
+        reference_positions = np.argsort(
+            distances,
+            kind="mergesort",
+        )[:cohort_size]
+        reference_mode = "candidatos mais próximos por distância composta"
+
+    reference = data.iloc[reference_positions].copy()
+    reference_values = reference[
+        "_valor_unitario_ajustado"
+    ].to_numpy(dtype=float)
+    reference_values = reference_values[
+        np.isfinite(reference_values) & (reference_values > 0)
+    ]
+
+    diagnostics["local_low_filter_reference_mode"] = reference_mode
+    diagnostics["local_low_filter_reference_count"] = int(
+        reference_values.size
+    )
+
+    if reference_values.size < LOCAL_FILTER_MIN_REFERENCE:
+        return data, empty_excluded, diagnostics
+
+    log_values = np.log(reference_values)
+    median_log = float(np.median(log_values))
+    median_vu = float(np.exp(median_log))
+    mad_log = float(np.median(np.abs(log_values - median_log)))
+
+    bounds: list[float] = [
+        median_vu * LOCAL_FILTER_MEDIAN_FRACTION_FLOOR
+    ]
+
+    if np.isfinite(mad_log) and mad_log > 1e-12:
+        lower_log_mad = (
+            median_log
+            - LOCAL_FILTER_LOWER_MODIFIED_Z
+            * mad_log
+            / 0.6745
+        )
+        bounds.append(float(np.exp(lower_log_mad)))
+
+    q1, q3 = np.quantile(log_values, [0.25, 0.75])
+    iqr = float(q3 - q1)
+    if np.isfinite(iqr) and iqr > 1e-12:
+        bounds.append(float(np.exp(q1 - 3.0 * iqr)))
+
+    lower_bound = float(max(bounds))
+    candidate_values = data[
+        "_valor_unitario_ajustado"
+    ].to_numpy(dtype=float)
+    low_mask = (
+        np.isfinite(candidate_values)
+        & (candidate_values > 0)
+        & (candidate_values < lower_bound)
+    )
+
+    # O filtro só é aplicado se restarem candidatos suficientes para o KNN.
+    if int((~low_mask).sum()) < max(int(min_k), 2):
+        diagnostics["local_low_filter_reference_mode"] += (
+            "; exclusão cancelada para preservar candidatos suficientes"
+        )
+        diagnostics["local_low_filter_lower_bound"] = lower_bound
+        diagnostics["local_low_filter_median_vu"] = median_vu
+        return data, empty_excluded, diagnostics
+
+    excluded = data.loc[low_mask].copy()
+    if excluded.empty:
+        diagnostics["local_low_filter_applied"] = True
+        diagnostics["local_low_filter_lower_bound"] = lower_bound
+        diagnostics["local_low_filter_median_vu"] = median_vu
+        return data, excluded, diagnostics
+
+    excluded["_etapa_controle"] = "filtro local de cauda inferior"
+    excluded["_motivo_exclusao"] = (
+        "Valor unitário ajustado incompatível com o mercado local do avaliando"
+    )
+    excluded["_motivo_alerta"] = ""
+    excluded["_limite_inferior_vu_prefiltro"] = lower_bound
+    excluded["_limite_superior_vu_prefiltro"] = np.nan
+    excluded["_escore_robusto_prefiltro"] = np.nan
+
+    cleaned = data.loc[~low_mask].copy()
+    diagnostics.update(
+        {
+            "local_low_filter_applied": True,
+            "local_low_filter_excluded": int(len(excluded)),
+            "local_low_filter_lower_bound": lower_bound,
+            "local_low_filter_median_vu": median_vu,
+        }
+    )
+    return cleaned, _ordered_control_columns(excluded), diagnostics
+
 def estimate_knn(
     preparation: PreparationResult,
     mapping: ColumnMapping,
@@ -1328,6 +1659,22 @@ def estimate_knn(
         data = data.loc[~data.index.isin(exclusions)].copy()
     if len(data) < 2:
         raise ValueError("Não existem candidatos suficientes para a estimativa.")
+
+    data, local_excluded_data, local_filter_diag = (
+        _local_lower_tail_filter(
+            data=data,
+            mapping=mapping,
+            active_features=active_features,
+            target=target,
+            similarity_weight=similarity_weight,
+            min_k=min_k,
+            max_k=max_k,
+        )
+    )
+    if len(data) < 2:
+        raise ValueError(
+            "Não existem candidatos suficientes após o filtro local."
+        )
 
     distances, attr_dist, geo_dist, geo_scale = _distance_profile(
         data, mapping, active_features, target, similarity_weight
@@ -1431,6 +1778,7 @@ def estimate_knn(
         "location_weight": float(1.0 - similarity_weight),
         "distance_power": float(distance_power),
         "n_candidates": int(len(data)),
+        **local_filter_diag,
         "reference_target_area": float(reference_target),
         "effective_territorial": bool(effective_territorial),
         **robust_diag,
@@ -1446,6 +1794,7 @@ def estimate_knn(
         active_features=[column for _, column in active_features],
         geographic_scale_km=geo_scale,
         diagnostics=diagnostics,
+        local_excluded_data=local_excluded_data,
     )
 
 

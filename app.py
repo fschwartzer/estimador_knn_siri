@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.7"
-CORE_VERSION = "6.2.0"
+APP_EDITION = "LITE 1.8"
+CORE_VERSION = "6.3.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
@@ -1719,12 +1719,17 @@ if calculate:
                 "data",
             ],
         )
+        duplicate_registration_column = choose_existing(
+            original_columns,
+            ["siat_inscricao"],
+        )
+        duplicate_value_column = mapping.valor
+
         duplicate_identifier_columns = tuple(
             column
             for column in (
                 "anuncio_website",
                 "imobiliaria_codigo_anuncio",
-                "origem_registro",
                 "idf_registro",
                 "id_anuncio",
                 "codigo_anuncio",
@@ -1742,6 +1747,10 @@ if calculate:
             remove_offer_duplicates=True,
             duplicate_date_column=duplicate_date_column,
             duplicate_identifier_columns=duplicate_identifier_columns,
+            duplicate_registration_column=(
+                duplicate_registration_column
+            ),
+            duplicate_value_column=duplicate_value_column,
         )
 
         rental_rows_after_filter = int(
@@ -1802,6 +1811,18 @@ if run is None:
 preparation: PreparationResult = run["preparation"]
 estimate: EstimateResult = run["estimate"]
 mapping = run["mapping"]
+
+all_excluded_data = pd.concat(
+    [
+        preparation.excluded_data,
+        estimate.local_excluded_data,
+    ],
+    ignore_index=True,
+    sort=False,
+)
+all_excluded_data.columns = make_unique_column_names(
+    all_excluded_data.columns
+)
 
 step_header(3, "Veja o resultado")
 
@@ -1928,6 +1949,10 @@ with tabs[0]:
     prefilter_total_excluded = int(
         preparation.diagnostics.get("prefilter_total_excluded", 0)
     )
+    local_low_excluded = int(
+        estimate.diagnostics.get("local_low_filter_excluded", 0)
+    )
+    total_excluded = prefilter_total_excluded + local_low_excluded
 
     with st.container(border=True):
         st.markdown("#### Controle prévio da amostra")
@@ -1935,10 +1960,11 @@ with tabs[0]:
         pf1.metric("Guias ITBI recebidas", prefilter_itbi_before)
         pf2.metric(
             "Dados excluídos",
-            prefilter_total_excluded,
+            total_excluded,
             delta=(
                 f"{prefilter_deterministic} cadastrais · "
-                f"{prefilter_statistical} robustos"
+                f"{prefilter_statistical} robustos · "
+                f"{local_low_excluded} locais"
             ),
             delta_color="off",
         )
@@ -1967,10 +1993,11 @@ with tabs[0]:
         else:
             st.caption(f"Filtro estatístico: {method}.")
 
-        if prefilter_total_excluded:
+        if total_excluded:
             st.warning(
-                "Os registros excluídos não participaram do cálculo do "
-                "fator de oferta nem da seleção dos comparáveis."
+                "Os registros excluídos não participaram da etapa em que "
+                "foram rejeitados. O filtro local inferior ocorre antes da "
+                "seleção final dos comparáveis."
             )
         else:
             st.success(
@@ -1983,18 +2010,33 @@ with tabs[0]:
                 "podem ser consultados e auditados abaixo."
             )
 
+        local_lower_bound = estimate.diagnostics.get(
+            "local_low_filter_lower_bound",
+            np.nan,
+        )
+        local_reference_mode = estimate.diagnostics.get(
+            "local_low_filter_reference_mode",
+            "não aplicado",
+        )
+        if np.isfinite(local_lower_bound):
+            st.caption(
+                f"Proteção local inferior: {local_reference_mode}. "
+                f"Valores ajustados abaixo de "
+                f"{money_br(local_lower_bound)}/m² foram rejeitados."
+            )
+
         if (
-            not preparation.excluded_data.empty
+            not all_excluded_data.empty
             or not preparation.flagged_data.empty
         ):
             with st.expander(
                 "Consultar dados excluídos e alertados",
                 expanded=False,
             ):
-                if not preparation.excluded_data.empty:
+                if not all_excluded_data.empty:
                     st.markdown("##### Dados excluídos")
                     st.dataframe(
-                        preparation.excluded_data,
+                        all_excluded_data,
                         use_container_width=True,
                         hide_index=True,
                         column_config={
@@ -2050,9 +2092,23 @@ with tabs[0]:
     duplicates_removed = int(
         preparation.diagnostics.get("offer_duplicates_removed", 0)
     )
+    primary_duplicates = int(
+        preparation.diagnostics.get(
+            "market_duplicates_removed_primary",
+            0,
+        )
+    )
+    fallback_duplicates = int(
+        preparation.diagnostics.get(
+            "offer_duplicates_removed_fallback",
+            0,
+        )
+    )
     st.info(
-        f"Foram removidos **{duplicates_removed}** registros repetidos de "
-        "ofertas antes da estimativa."
+        f"Foram removidos **{duplicates_removed}** registros repetidos: "
+        f"**{primary_duplicates}** pela chave prioritária "
+        "`tipo + siat_inscricao + valor_oferta` e "
+        f"**{fallback_duplicates}** por identificadores de anúncio."
     )
 
     discount_warning = preparation.diagnostics.get("discount_warning")
@@ -2192,7 +2248,7 @@ diagnostics = {
 excel_bytes = dataframe_to_excel(
     neighbors_export,
     diagnostics,
-    preparation.excluded_data,
+    all_excluded_data,
     preparation.flagged_data,
 )
 st.download_button(
@@ -2208,11 +2264,13 @@ with st.expander("Como o estimador trabalha"):
         """
 - considera apenas a finalidade escolhida;
 - exclui ofertas de aluguel;
-- mantém somente a coleta mais recente de cada oferta repetida;
+- remove primeiro duplicidades por tipo, inscrição SIAT e valor, mantendo a coleta mais recente;
+- usa identificadores genuínos do anúncio apenas como fallback;
 - exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;
 - analisa o ln(valor unitário) das Guias ITBI por escore Z modificado;
 - exclui automaticamente extremos robustos somente com 15 ou mais Guias ITBI;
 - mantém apenas em alerta os extremos identificados em amostras de 8 a 14 Guias;
+- aplica proteção local de cauda inferior com imóveis física e espacialmente compatíveis;
 - exporta os dados excluídos e alertados para auditoria;
 - aplica fator 0,90 quando a amostra contém somente ofertas;
 - havendo transações e ofertas suficientes, calcula a mediana da razão observada;
