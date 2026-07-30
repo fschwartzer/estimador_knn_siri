@@ -6,14 +6,14 @@ import hashlib
 import numpy as np
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.5"
+APP_EDITION = "LITE 1.6"
 CORE_VERSION = "6.1.3"
 
-# Parâmetros internos: não ficam expostos ao usuário.
+# Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 7
 MAX_K = 30
 MIN_EFFECTIVE_NEIGHBORS = 5.0
@@ -909,13 +909,13 @@ def render_comparables_map(
     longitude_column: str,
     target_latitude: float,
     target_longitude: float,
+    type_column: str | None = None,
+    value_column: str | None = None,
+    reference_area_column: str | None = None,
+    testada_column: str | None = None,
 ) -> None:
     """
-    Exibe um mapa de proximidade autossuficiente.
-
-    O gráfico não depende de WebGL, Mapbox, tiles externos ou componentes
-    JavaScript. As coordenadas são convertidas em deslocamentos aproximados
-    em quilômetros em relação ao imóvel avaliando.
+    Exibe avaliando e comparáveis em mapa Plotly/MapLibre interativo.
     """
     comparable_points, target_points, discarded = build_map_data(
         neighbors=neighbors,
@@ -932,9 +932,6 @@ def render_comparables_map(
         )
         return
 
-    target_lat = float(target_points.iloc[0]["latitude"])
-    target_lon = float(target_points.iloc[0]["longitude"])
-
     if discarded:
         st.warning(
             f"{discarded} comparável(is) não foi(ram) incluído(s) no mapa "
@@ -947,53 +944,62 @@ def render_comparables_map(
         )
         return
 
-    latitude_scale_km = 111.32
-    longitude_scale_km = 111.32 * np.cos(np.radians(target_lat))
-    longitude_scale_km = max(abs(longitude_scale_km), 1e-6)
-
     comparable_points = comparable_points.copy()
-    comparable_points["deslocamento_leste_km"] = (
-        comparable_points["longitude"] - target_lon
-    ) * longitude_scale_km
-    comparable_points["deslocamento_norte_km"] = (
-        comparable_points["latitude"] - target_lat
-    ) * latitude_scale_km
 
-    weights = pd.to_numeric(
-        comparable_points["peso"],
-        errors="coerce",
-    ).fillna(0.0)
+    def values_from_neighbors(
+        column_name: str | None,
+        *,
+        numeric: bool = False,
+    ) -> pd.Series:
+        if not column_name or column_name not in neighbors.columns:
+            return pd.Series(
+                [np.nan if numeric else "—"] * len(comparable_points),
+                index=comparable_points.index,
+            )
 
-    if weights.max() > 0:
-        marker_sizes = 80 + 520 * (weights / weights.max())
-    else:
-        marker_sizes = pd.Series(
-            np.full(len(comparable_points), 180.0),
-            index=comparable_points.index,
+        source = first_named_series(neighbors, column_name).reset_index(drop=True)
+        positions = (
+            pd.to_numeric(comparable_points["ordem"], errors="coerce")
+            .fillna(1)
+            .astype(int)
+            .sub(1)
+            .clip(lower=0, upper=max(len(source) - 1, 0))
         )
+        selected = source.iloc[positions.to_numpy()].reset_index(drop=True)
+        selected.index = comparable_points.index
 
-    fig, ax = plt.subplots(figsize=(11.5, 6.2))
+        if numeric:
+            return pd.to_numeric(selected, errors="coerce")
+        return selected.astype("string").fillna("—")
 
-    ax.scatter(
-        comparable_points["deslocamento_leste_km"],
-        comparable_points["deslocamento_norte_km"],
-        s=marker_sizes,
-        alpha=0.78,
-        edgecolors="white",
-        linewidths=1.2,
-        label="Comparáveis",
-        zorder=3,
+    comparable_points["tipo_informacao"] = values_from_neighbors(type_column)
+    comparable_points["valor_total_original"] = values_from_neighbors(
+        value_column,
+        numeric=True,
     )
-
-    ax.scatter(
-        [0.0],
-        [0.0],
-        s=340,
-        marker="*",
-        edgecolors="white",
-        linewidths=1.4,
-        label="Imóvel avaliando",
-        zorder=5,
+    comparable_points["area_referencia"] = values_from_neighbors(
+        reference_area_column,
+        numeric=True,
+    )
+    comparable_points["testada"] = values_from_neighbors(
+        testada_column,
+        numeric=True,
+    )
+    comparable_points["valor_unitario_original"] = values_from_neighbors(
+        "_valor_unitario_original",
+        numeric=True,
+    )
+    comparable_points["valor_unitario_ajustado"] = values_from_neighbors(
+        "_valor_unitario_ajustado",
+        numeric=True,
+    )
+    comparable_points["valor_unitario_robusto"] = values_from_neighbors(
+        "_valor_unitario_robusto",
+        numeric=True,
+    )
+    comparable_points["linha_excel"] = values_from_neighbors(
+        "_row_excel",
+        numeric=True,
     )
 
     comparable_points = comparable_points.sort_values(
@@ -1001,81 +1007,283 @@ def render_comparables_map(
         ascending=False,
         na_position="last",
     ).reset_index(drop=True)
+    comparable_points["posicao_no_mapa"] = np.arange(
+        1,
+        len(comparable_points) + 1,
+    )
 
-    for position, row in comparable_points.iterrows():
-        label = str(position + 1)
-        ax.annotate(
-            label,
-            (
-                row["deslocamento_leste_km"],
-                row["deslocamento_norte_km"],
-            ),
-            xytext=(5, 5),
-            textcoords="offset points",
-            fontsize=8.5,
-            fontweight="bold",
-            zorder=6,
+    weights = pd.to_numeric(
+        comparable_points["peso"],
+        errors="coerce",
+    ).fillna(0.0)
+
+    if float(weights.max()) > float(weights.min()):
+        marker_sizes = 15 + 16 * (
+            (weights - weights.min()) / (weights.max() - weights.min())
+        )
+    else:
+        marker_sizes = pd.Series(
+            np.full(len(comparable_points), 21.0),
+            index=comparable_points.index,
         )
 
-    all_x = np.concatenate(
+    comparable_points["peso_formatado"] = weights.map(
+        lambda value: f"{value * 100:.2f}%".replace(".", ",")
+    )
+    comparable_points["distancia_formatada"] = comparable_points[
+        "distancia_km"
+    ].map(
+        lambda value: (
+            f"{value:.3f} km".replace(".", ",")
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["vu_ajustado_formatado"] = comparable_points[
+        "valor_unitario_ajustado"
+    ].map(
+        lambda value: (
+            money_br(value) + "/m²"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["vu_original_formatado"] = comparable_points[
+        "valor_unitario_original"
+    ].map(
+        lambda value: (
+            money_br(value) + "/m²"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["area_formatada"] = comparable_points[
+        "area_referencia"
+    ].map(
+        lambda value: (
+            number_br(value) + " m²"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["testada_formatada"] = comparable_points["testada"].map(
+        lambda value: (
+            number_br(value) + " m"
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+    comparable_points["linha_excel_formatada"] = comparable_points[
+        "linha_excel"
+    ].map(
+        lambda value: (
+            str(int(value))
+            if pd.notna(value) and np.isfinite(value)
+            else "—"
+        )
+    )
+
+    all_points = pd.concat(
         [
-            comparable_points["deslocamento_leste_km"].to_numpy(dtype=float),
-            np.array([0.0]),
+            target_points[["latitude", "longitude"]],
+            comparable_points[["latitude", "longitude"]],
+        ],
+        ignore_index=True,
+    )
+
+    center_latitude = float(all_points["latitude"].median())
+    center_longitude = float(all_points["longitude"].median())
+    zoom = calculate_map_zoom(all_points)
+
+    style_options = {
+        "Ruas — OpenStreetMap": "open-street-map",
+        "Claro — Carto Positron": "carto-positron",
+        "Sem mapa-base": "white-bg",
+    }
+    style_label = st.radio(
+        "Mapa-base",
+        list(style_options),
+        horizontal=True,
+        key="estimador_knn_siri_map_style",
+        help=(
+            "Use 'Sem mapa-base' caso a rede ou o navegador bloqueie os "
+            "tiles externos. A navegação e os pontos continuarão interativos."
+        ),
+    )
+    map_style = style_options[style_label]
+
+    line_lats: list[float | None] = []
+    line_lons: list[float | None] = []
+    target_lat = float(target_points.iloc[0]["latitude"])
+    target_lon = float(target_points.iloc[0]["longitude"])
+
+    for row in comparable_points.itertuples(index=False):
+        line_lats.extend([target_lat, float(row.latitude), None])
+        line_lons.extend([target_lon, float(row.longitude), None])
+
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Scattermap(
+            lat=line_lats,
+            lon=line_lons,
+            mode="lines",
+            line={
+                "width": 1.2,
+                "color": "rgba(23, 59, 87, 0.28)",
+            },
+            hoverinfo="skip",
+            showlegend=False,
+            name="Ligações",
+        )
+    )
+
+    comparable_customdata = np.column_stack(
+        [
+            comparable_points["posicao_no_mapa"].astype(str),
+            comparable_points["tipo_informacao"].astype(str),
+            comparable_points["peso_formatado"].astype(str),
+            comparable_points["distancia_formatada"].astype(str),
+            comparable_points["vu_ajustado_formatado"].astype(str),
+            comparable_points["vu_original_formatado"].astype(str),
+            comparable_points["area_formatada"].astype(str),
+            comparable_points["testada_formatada"].astype(str),
+            comparable_points["linha_excel_formatada"].astype(str),
+            comparable_points["latitude"].map(lambda x: f"{x:.7f}"),
+            comparable_points["longitude"].map(lambda x: f"{x:.7f}"),
         ]
     )
-    all_y = np.concatenate(
-        [
-            comparable_points["deslocamento_norte_km"].to_numpy(dtype=float),
-            np.array([0.0]),
-        ]
+
+    figure.add_trace(
+        go.Scattermap(
+            lat=comparable_points["latitude"],
+            lon=comparable_points["longitude"],
+            mode="markers+text",
+            text=comparable_points["posicao_no_mapa"].astype(str),
+            textposition="top center",
+            textfont={
+                "size": 13,
+                "color": "#172033",
+            },
+            marker={
+                "size": marker_sizes,
+                "color": "#0E7C7B",
+                "opacity": 0.86,
+                "symbol": "circle",
+                "allowoverlap": True,
+            },
+            customdata=comparable_customdata,
+            hovertemplate=(
+                "<b>Comparável %{customdata[0]}</b><br>"
+                "Tipo: %{customdata[1]}<br>"
+                "Peso no KNN: %{customdata[2]}<br>"
+                "Distância: %{customdata[3]}<br>"
+                "VU ajustado: %{customdata[4]}<br>"
+                "VU original: %{customdata[5]}<br>"
+                "Área de referência: %{customdata[6]}<br>"
+                "Testada: %{customdata[7]}<br>"
+                "Linha do Excel: %{customdata[8]}<br>"
+                "Latitude: %{customdata[9]}<br>"
+                "Longitude: %{customdata[10]}"
+                "<extra></extra>"
+            ),
+            name="Comparáveis",
+        )
     )
 
-    max_extent = max(
-        float(np.nanmax(np.abs(all_x))) if all_x.size else 0.0,
-        float(np.nanmax(np.abs(all_y))) if all_y.size else 0.0,
-        0.25,
+    figure.add_trace(
+        go.Scattermap(
+            lat=[target_lat],
+            lon=[target_lon],
+            mode="markers+text",
+            text=["A"],
+            textposition="middle center",
+            textfont={
+                "size": 13,
+                "color": "white",
+            },
+            marker={
+                "size": 29,
+                "color": "#B42318",
+                "opacity": 0.96,
+                "symbol": "circle",
+                "allowoverlap": True,
+            },
+            customdata=np.array(
+                [[f"{target_lat:.7f}", f"{target_lon:.7f}"]]
+            ),
+            hovertemplate=(
+                "<b>Imóvel avaliando</b><br>"
+                "Latitude: %{customdata[0]}<br>"
+                "Longitude: %{customdata[1]}"
+                "<extra></extra>"
+            ),
+            name="Imóvel avaliando",
+        )
     )
-    padding = max_extent * 0.18 + 0.08
 
-    ax.set_xlim(float(np.nanmin(all_x)) - padding, float(np.nanmax(all_x)) + padding)
-    ax.set_ylim(float(np.nanmin(all_y)) - padding, float(np.nanmax(all_y)) + padding)
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.axhline(0, linewidth=0.7, alpha=0.35, zorder=1)
-    ax.axvline(0, linewidth=0.7, alpha=0.35, zorder=1)
-    ax.grid(True, linewidth=0.6, alpha=0.25)
-    ax.set_xlabel("Deslocamento leste–oeste em relação ao avaliando (km)")
-    ax.set_ylabel("Deslocamento norte–sul em relação ao avaliando (km)")
-    ax.set_title("Mapa de proximidade dos comparáveis", loc="left", pad=14)
-    ax.legend(loc="best", frameon=True)
+    figure.update_layout(
+        height=590,
+        margin={"l": 0, "r": 0, "t": 8, "b": 0},
+        paper_bgcolor="rgba(0,0,0,0)",
+        map={
+            "style": map_style,
+            "center": {
+                "lat": center_latitude,
+                "lon": center_longitude,
+            },
+            "zoom": zoom,
+        },
+        dragmode="pan",
+        hovermode="closest",
+        uirevision=f"knn-siri-{style_label}",
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.01,
+            "xanchor": "left",
+            "x": 0,
+            "bgcolor": "rgba(255,255,255,0.88)",
+        },
+    )
 
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
+    st.plotly_chart(
+        figure,
+        use_container_width=True,
+        config={
+            "scrollZoom": True,
+            "displayModeBar": True,
+            "displaylogo": False,
+            "responsive": True,
+            "modeBarButtonsToRemove": [
+                "lasso2d",
+                "select2d",
+            ],
+        },
+        key="estimador_knn_siri_plotly_map",
+    )
 
     st.caption(
-        "O tamanho dos círculos representa o peso do comparável no KNN. "
-        "Os números correspondem à ordem decrescente de peso. As distâncias "
-        "são aproximações planas calculadas a partir de latitude e longitude."
-    )
-
-    map_table = comparable_points[
-        [
-            "ordem",
-            "peso",
-            "distancia_km",
-            "latitude",
-            "longitude",
-            "deslocamento_leste_km",
-            "deslocamento_norte_km",
-        ]
-    ].copy()
-    map_table.insert(
-        0,
-        "posição_no_mapa",
-        np.arange(1, len(map_table) + 1),
+        "Arraste para navegar, use a roda do mouse para aproximar e passe o "
+        "cursor sobre os pontos para consultar os dados. O tamanho do marcador "
+        "representa o peso do comparável no KNN."
     )
 
     with st.expander("Identificação dos pontos do mapa"):
-        map_display = map_table.copy()
+        map_display = comparable_points[
+            [
+                "posicao_no_mapa",
+                "tipo_informacao",
+                "peso",
+                "distancia_km",
+                "valor_unitario_ajustado",
+                "area_referencia",
+                "testada",
+                "linha_excel",
+                "latitude",
+                "longitude",
+            ]
+        ].copy()
         map_display["peso_percentual"] = (
             pd.to_numeric(map_display["peso"], errors="coerce") * 100
         )
@@ -1086,6 +1294,8 @@ def render_comparables_map(
             use_container_width=True,
             hide_index=True,
             column_config={
+                "posicao_no_mapa": "Ponto",
+                "tipo_informacao": "Tipo",
                 "peso_percentual": st.column_config.NumberColumn(
                     "Peso",
                     format="%.2f%%",
@@ -1094,13 +1304,21 @@ def render_comparables_map(
                     "Distância",
                     format="%.3f km",
                 ),
-                "deslocamento_leste_km": st.column_config.NumberColumn(
-                    "Leste–oeste",
-                    format="%.3f km",
+                "valor_unitario_ajustado": st.column_config.NumberColumn(
+                    "VU ajustado",
+                    format="R$ %.2f",
                 ),
-                "deslocamento_norte_km": st.column_config.NumberColumn(
-                    "Norte–sul",
-                    format="%.3f km",
+                "area_referencia": st.column_config.NumberColumn(
+                    "Área",
+                    format="%.2f m²",
+                ),
+                "testada": st.column_config.NumberColumn(
+                    "Testada",
+                    format="%.2f m",
+                ),
+                "linha_excel": st.column_config.NumberColumn(
+                    "Linha do Excel",
+                    format="%d",
                 ),
                 "latitude": st.column_config.NumberColumn(format="%.7f"),
                 "longitude": st.column_config.NumberColumn(format="%.7f"),
@@ -1228,7 +1446,7 @@ mapping, missing_fields = build_mapping(df)
 
 if mapping is None:
     st.error(
-        "A planilha não possui todos os campos necessários."
+        "A planilha não possui todos os campos necessários para a edição LITE."
     )
     st.write("Campos não identificados: " + ", ".join(missing_fields) + ".")
     st.caption(
@@ -1729,6 +1947,10 @@ with tabs[1]:
         longitude_column=mapping.longitude,
         target_latitude=run["target"]["latitude"],
         target_longitude=run["target"]["longitude"],
+        type_column=mapping.tipo_informacao,
+        value_column=mapping.valor,
+        reference_area_column=run["reference_area_column"],
+        testada_column=mapping.testada,
     )
 
 diagnostics = {
