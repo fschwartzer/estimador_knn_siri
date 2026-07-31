@@ -13,17 +13,17 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.12.0"
-CORE_VERSION = "6.7.0"
+APP_EDITION = "LITE 1.13.0"
+CORE_VERSION = "6.8.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
-MIN_K = 7
-MAX_K = 30
-MIN_EFFECTIVE_NEIGHBORS = 5.0
-SIMILARITY_WEIGHT = 2.0 / 3.0
-DISTANCE_POWER = 1.0
-MAX_INDIVIDUAL_WEIGHT = 0.30
-ROBUST_MAD_THRESHOLD = 2.5
+MIN_K = 12
+MAX_K = 25
+MIN_EFFECTIVE_NEIGHBORS = 11.0
+SIMILARITY_WEIGHT = 0.45
+DISTANCE_POWER = 0.35
+MAX_INDIVIDUAL_WEIGHT = 0.25
+ROBUST_MAD_THRESHOLD = 1.25
 DISCOUNT_CAP = 0.20
 
 
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.12.0-20260730"
-CORE_MODULE_FILE = "estimador_knn_core_v670.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v670.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.13.0-20260730"
+CORE_MODULE_FILE = "estimador_knn_core_v680.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v680.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v670",
+        "_estimador_knn_core_runtime_v680",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v670",
+        "_estimador_knn_schema_runtime_v680",
     )
 except Exception as exc:
     st.error(
@@ -104,6 +104,9 @@ _required_knn = {
     "estimate_knn",
     "normalize_text",
     "prepare_data",
+    "CALIBRATED_GLOBAL_PARAMETERS",
+    "CALIBRATED_PURPOSE_PARAMETERS",
+    "calibrated_parameters_for_purpose",
 }
 _required_schema = {
     "DERIVED_AREA_CONSTRUIDA",
@@ -167,6 +170,11 @@ PreparationResult = _knn.PreparationResult
 estimate_knn = _knn.estimate_knn
 normalize_text = _knn.normalize_text
 prepare_data = _knn.prepare_data
+CALIBRATED_GLOBAL_PARAMETERS = _knn.CALIBRATED_GLOBAL_PARAMETERS
+CALIBRATED_PURPOSE_PARAMETERS = _knn.CALIBRATED_PURPOSE_PARAMETERS
+calibrated_parameters_for_purpose = (
+    _knn.calibrated_parameters_for_purpose
+)
 
 DERIVED_AREA_CONSTRUIDA = _schema.DERIVED_AREA_CONSTRUIDA
 DERIVED_AREA_LOTE = _schema.DERIVED_AREA_LOTE
@@ -1652,6 +1660,22 @@ st.caption(
     f"**{area_preference_labels.get(area_preference, area_preference)}**."
 )
 
+selected_knn_parameters = calibrated_parameters_for_purpose(
+    selected_purpose
+)
+st.caption(
+    "Perfil KNN: "
+    f"**{selected_knn_parameters['profile']}** · "
+    f"K {int(selected_knn_parameters['min_k'])}–"
+    f"{int(selected_knn_parameters['max_k'])} · "
+    f"vizinhos efetivos mínimos "
+    f"{float(selected_knn_parameters['min_effective_neighbors']):.0f} · "
+    f"peso físico "
+    f"{float(selected_knn_parameters['similarity_weight']):.0%} · "
+    f"peso geográfico "
+    f"{float(selected_knn_parameters['location_weight']):.0%}."
+)
+
 context_key = (
     f"{file_signature}:{selected_purpose}:{area_preference}"
 )
@@ -1994,13 +2018,29 @@ if calculate:
             mapping=mapping,
             target=target,
             reference_area_column=reference_area_column,
-            min_k=MIN_K,
-            max_k=MAX_K,
-            min_effective_neighbors=MIN_EFFECTIVE_NEIGHBORS,
-            similarity_weight=SIMILARITY_WEIGHT,
-            distance_power=DISTANCE_POWER,
-            max_individual_weight=MAX_INDIVIDUAL_WEIGHT,
-            robust_mad_threshold=ROBUST_MAD_THRESHOLD,
+            min_k=int(selected_knn_parameters["min_k"]),
+            max_k=int(selected_knn_parameters["max_k"]),
+            min_effective_neighbors=float(
+                selected_knn_parameters[
+                    "min_effective_neighbors"
+                ]
+            ),
+            similarity_weight=float(
+                selected_knn_parameters["similarity_weight"]
+            ),
+            distance_power=float(
+                selected_knn_parameters["distance_power"]
+            ),
+            max_individual_weight=float(
+                selected_knn_parameters[
+                    "max_individual_weight"
+                ]
+            ),
+            robust_mad_threshold=float(
+                selected_knn_parameters[
+                    "robust_mad_threshold"
+                ]
+            ),
             territorial=territorial,
         )
 
@@ -2015,6 +2055,7 @@ if calculate:
             "reference_area_column": reference_area_column,
             "target": target,
             "duplicate_date_column": duplicate_date_column,
+            "knn_parameters": dict(selected_knn_parameters),
         }
     except Exception as exc:
         st.error(str(exc))
@@ -2489,6 +2530,27 @@ diagnostics = {
         run["finalidade_crawler_normalizada"]
     ),
     "taxonomia_utilizada": "finalidade_crawler_normalizada",
+    "perfil_parametros_knn": run["knn_parameters"]["profile"],
+    "k_inicial_configurado": run["knn_parameters"]["min_k"],
+    "k_maximo_configurado": run["knn_parameters"]["max_k"],
+    "vizinhos_efetivos_minimos_configurados": (
+        run["knn_parameters"]["min_effective_neighbors"]
+    ),
+    "peso_fisico_configurado": (
+        run["knn_parameters"]["similarity_weight"]
+    ),
+    "peso_geografico_configurado": (
+        run["knn_parameters"]["location_weight"]
+    ),
+    "peso_maximo_individual_configurado": (
+        run["knn_parameters"]["max_individual_weight"]
+    ),
+    "potencia_distancia_configurada": (
+        run["knn_parameters"]["distance_power"]
+    ),
+    "limiar_robusto_configurado": (
+        run["knn_parameters"]["robust_mad_threshold"]
+    ),
     "valor_total_estimado": estimate.estimated_total_value,
     "valor_unitario_estimado": estimate.estimated_unit_value,
     "area_referencia": run["reference_area_column"],
@@ -2522,6 +2584,7 @@ with st.expander("Como o estimador trabalha"):
 - considera apenas a finalidade escolhida;
 - exclui ofertas de aluguel;
 - normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;
+- escolhe automaticamente parâmetros KNN calibrados nos dados dos últimos três meses, com perfis específicos apenas quando validados;
 - remove primeiro duplicidades por tipo, inscrição SIAT e valor, mantendo a coleta mais recente;
 - usa identificadores genuínos do anúncio apenas como fallback;
 - exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;

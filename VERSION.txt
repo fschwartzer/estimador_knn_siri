@@ -1,0 +1,5 @@
+estimador_knn_siri LITE 1.13.0
+Parâmetros KNN calibrados nos dados dos últimos três meses.
+Build: estimador-knn-siri-lite-1.13.0-20260730
+Núcleo: estimador_knn_core_v680.py / 6.8.0
+Schema: estimador_knn_schema_v680.py / 6.8.0

@@ -1,0 +1,32 @@
+CALIBRAÇÃO DO ESTIMADOR KNN SIRI — LITE 1.13.0
+
+Base:
+- Arquivo: SIRI_pesquisa_aluguel-30.07.2026 13.43.03.xlsx
+- Período: 30/04/2026 a 30/07/2026
+- Registros originais: 14845
+- Casos válidos de backtesting: 415
+- Casos de otimização: 288
+- Casos de confirmação: 127
+- Casos recentes: 112
+- Configurações únicas avaliadas: 211
+
+Procedimento:
+1. Normalização para finalidade_crawler_normalizada.
+2. Exclusão de aluguéis, duplicidades e dados atípicos conforme as regras
+   seguras do aplicativo.
+3. Agrupamento por imóvel/inscrição/área/coordenadas para impedir vazamento
+   entre treino e validação.
+4. Recalculo do fator de oferta em cada rodada somente com os dados de treino.
+5. Busca aleatória ampla, refinamento local, confirmação independente e
+   validação temporal.
+6. Seleção pelo equilíbrio entre MdAPE, MdAPE macro por finalidade,
+   cauda P90, viés e estabilidade.
+7. Overrides por finalidade aceitos somente quando a melhora se manteve
+   fora da amostra. Garagens preservaram a configuração 1.12.
+
+Resultado operacional:
+- MdAPE 1.12, amostra completa: 33.2506%
+- MdAPE 1.13 híbrida, amostra completa: 28.6879%
+- Redução relativa do MdAPE: 13.72%
+- Score composto 1.12: 0.398010
+- Score composto 1.13: 0.335997

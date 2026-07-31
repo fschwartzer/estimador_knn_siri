@@ -1,0 +1,66 @@
+{
+  "app_edition": "LITE 1.13.0",
+  "module_version": "6.8.0",
+  "build_id": "estimador-knn-siri-lite-1.13.0-20260730",
+  "calibration_period": {
+    "start": "2026-04-30",
+    "end": "2026-07-30"
+  },
+  "global": {
+    "profile": "global_calibrado_3_meses",
+    "min_k": 12,
+    "max_k": 25,
+    "min_effective_neighbors": 11.0,
+    "similarity_weight": 0.45,
+    "location_weight": 0.55,
+    "max_individual_weight": 0.25,
+    "distance_power": 0.35,
+    "robust_mad_threshold": 1.25
+  },
+  "purpose_overrides": {
+    "casa / residencia": {
+      "profile": "especifico_casa_residencia",
+      "min_k": 5,
+      "max_k": 40,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.85,
+      "location_weight": 0.15,
+      "max_individual_weight": 0.2,
+      "distance_power": 0.5,
+      "robust_mad_threshold": 2.0
+    },
+    "sala comercial": {
+      "profile": "especifico_sala_comercial",
+      "min_k": 9,
+      "max_k": 20,
+      "min_effective_neighbors": 15.0,
+      "similarity_weight": 0.6,
+      "location_weight": 0.4,
+      "max_individual_weight": 0.25,
+      "distance_power": 0.65,
+      "robust_mad_threshold": 2.5
+    },
+    "garagem / vaga": {
+      "profile": "conservador_garagem_vaga_v1_12",
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "location_weight": 0.3333333333333333,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5
+    }
+  },
+  "validation": {
+    "original_records": 14845,
+    "backtest_cases": 415,
+    "tuning_cases": 288,
+    "confirmation_cases": 127,
+    "recent_cases": 112,
+    "unique_configurations": 211,
+    "mdape_v1_12": 0.33250646086564556,
+    "mdape_v1_13": 0.2868793753155697,
+    "relative_mdape_reduction": 0.13722165106593887
+  }
+}
