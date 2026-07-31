@@ -1,0 +1,5 @@
+﻿perfil;finalidades;fracao_mediana;z_modificado_inferior;multiplicador_iqr;razao_minima_ruptura;maximo_grupo_inferior;maximo_excluido
+adaptativo_seguro_global;demais finalidades;0.45;3.0;2.0;1.7;0.3;0.3
+adaptativo_seguro_sala_comercial;SALA COMERCIAL;0.55;3.0;2.0;1.6;0.3;0.3
+adaptativo_seguro_loja;"LOJA; LOJA EM GALERIA; LOJA EM SHOPPING";0.5;3.0;2.0;1.65;0.3;0.3
+adaptativo_seguro_imovel_comercial;IMÓVEL COMERCIAL;0.5;3.0;2.0;1.65;0.3;0.3

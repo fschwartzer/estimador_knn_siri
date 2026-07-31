@@ -1,4 +1,4 @@
-# estimador_knn_siri — LITE 1.14.0
+# estimador_knn_siri — LITE 1.15.0
 
 Edição LITE do estimador imobiliário por KNN, preparada para usuários sem
 conhecimento estatístico ou de aprendizado de máquina.
@@ -536,3 +536,33 @@ A coluna `__natureza_uso_normalizada` registra `RESIDENCIAL`,
 
 As duas novas finalidades herdam o perfil KNN conservador anteriormente
 utilizado para garagens. Os demais parâmetros calibrados foram preservados.
+
+
+## Filtro local adaptativo seguro — LITE 1.15.0
+
+A proteção da cauda inferior passa a trabalhar com o submercado local do
+avaliando. A referência prioriza imóveis com áreas compatíveis e menor
+distância geográfica ou composta.
+
+O limite automático combina mediana local ponderada pela proximidade, MAD e
+IQR em escala logarítmica, fração mínima da mediana e ruptura entre grupos de
+valor.
+
+Para salas comerciais, a fração de segurança é 55% da mediana local
+ponderada. Uma mediana de R$ 9.000/m² gera referência de R$ 4.950/m², sem
+fixar um corte nominal para toda a cidade.
+
+A ruptura somente é aceita quando o grupo inferior representa no máximo 30%
+da referência, o grupo superior preserva ao menos o K inicial e apresenta
+compatibilidade física e geográfica suficiente.
+
+Travas:
+
+- não excluir mais de 30% da amostra;
+- preservar ao menos o K inicial;
+- cancelar a exclusão quando a cauda puder representar submercado legítimo;
+- usar valores já ajustados pelo fator de oferta;
+- exportar mediana, limites, ruptura, origem do corte e registros excluídos.
+
+Parâmetros KNN, política de conflito tipológico e taxonomia da versão 1.14
+foram preservados.

@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.14.0"
-CORE_VERSION = "6.9.0"
+APP_EDITION = "LITE 1.15.0"
+CORE_VERSION = "6.10.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 12
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.14.0-20260731"
-CORE_MODULE_FILE = "estimador_knn_core_v690.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v690.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.15.0-20260731"
+CORE_MODULE_FILE = "estimador_knn_core_v6100.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v6100.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v690",
+        "_estimador_knn_core_runtime_v6100",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v690",
+        "_estimador_knn_schema_runtime_v6100",
     )
 except Exception as exc:
     st.error(
@@ -2379,11 +2379,85 @@ with tabs[0]:
             "local_low_filter_reference_mode",
             "não aplicado",
         )
-        if np.isfinite(local_lower_bound):
+        local_profile = estimate.diagnostics.get(
+            "local_low_filter_profile",
+            "não informado",
+        )
+        local_cutoff_source = estimate.diagnostics.get(
+            "local_low_filter_cutoff_source",
+            "não informado",
+        )
+        local_median = estimate.diagnostics.get(
+            "local_low_filter_weighted_median_vu",
+            np.nan,
+        )
+        local_fraction = estimate.diagnostics.get(
+            "local_low_filter_median_fraction",
+            np.nan,
+        )
+        local_gap_detected = bool(
+            estimate.diagnostics.get(
+                "local_low_filter_gap_detected",
+                False,
+            )
+        )
+        local_gap_ratio = estimate.diagnostics.get(
+            "local_low_filter_gap_ratio",
+            np.nan,
+        )
+        local_gap_lower = estimate.diagnostics.get(
+            "local_low_filter_gap_lower_value",
+            np.nan,
+        )
+        local_gap_upper = estimate.diagnostics.get(
+            "local_low_filter_gap_upper_value",
+            np.nan,
+        )
+        local_cancelled_reason = estimate.diagnostics.get(
+            "local_low_filter_cancelled_reason",
+            "",
+        )
+
+        if np.isfinite(local_median):
+            fraction_text = (
+                f"{float(local_fraction):.0%}"
+                if np.isfinite(local_fraction)
+                else "não informada"
+            )
             st.caption(
-                f"Proteção local inferior: {local_reference_mode}. "
-                f"Valores ajustados abaixo de "
-                f"{money_br(local_lower_bound)}/m² foram rejeitados."
+                f"Filtro local **{local_profile}**: "
+                f"{local_reference_mode}. Mediana local ponderada: "
+                f"{money_br(local_median)}/m²; fração de segurança: "
+                f"{fraction_text}."
+            )
+
+        if local_gap_detected:
+            st.info(
+                "Foi identificada possível ruptura entre grupos de valor: "
+                f"{money_br(local_gap_lower)}/m² → "
+                f"{money_br(local_gap_upper)}/m² "
+                f"(razão {float(local_gap_ratio):.2f})."
+            )
+
+        if np.isfinite(local_lower_bound):
+            if int(local_low_excluded) > 0:
+                st.caption(
+                    f"Limite local automático: "
+                    f"{money_br(local_lower_bound)}/m², definido por "
+                    f"**{local_cutoff_source}**. Valores ajustados abaixo "
+                    "desse limite foram rejeitados."
+                )
+            else:
+                st.caption(
+                    f"Limite local analisado: "
+                    f"{money_br(local_lower_bound)}/m², definido por "
+                    f"**{local_cutoff_source}**."
+                )
+
+        if local_cancelled_reason:
+            st.warning(
+                "O filtro local não realizou a exclusão: "
+                f"{local_cancelled_reason}."
             )
 
         if (
@@ -2669,7 +2743,7 @@ with st.expander("Como o estimador trabalha"):
 - analisa o ln(valor unitário) das Guias ITBI por escore Z modificado;
 - exclui automaticamente extremos robustos somente com 15 ou mais Guias ITBI;
 - mantém apenas em alerta os extremos identificados em amostras de 8 a 14 Guias;
-- aplica proteção local de cauda inferior com imóveis física e espacialmente compatíveis;
+- aplica filtro local adaptativo com mediana ponderada pela proximidade, critérios robustos e detecção de ruptura entre grupos de valor;
 - exporta os dados excluídos e alertados para auditoria;
 - aplica fator 0,90 quando a amostra contém somente ofertas;
 - havendo transações e ofertas suficientes, calcula a mediana da razão observada;

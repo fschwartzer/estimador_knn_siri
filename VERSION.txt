@@ -1,6 +1,6 @@
-estimador_knn_siri LITE 1.14.0
-Conflitos tipológicos usados apenas como contingência.
-Separação de estacionamentos residenciais e não residenciais.
-Build: estimador-knn-siri-lite-1.14.0-20260731
-Núcleo: estimador_knn_core_v690.py / 6.9.0
-Schema: estimador_knn_schema_v690.py / 6.9.0
+estimador_knn_siri LITE 1.15.0
+Filtro local adaptativo seguro para cauda inferior.
+Mediana ponderada, MAD/IQR e ruptura entre grupos de valor.
+Build: estimador-knn-siri-lite-1.15.0-20260731
+Núcleo: estimador_knn_core_v6100.py / 6.10.0
+Schema: estimador_knn_schema_v6100.py / 6.10.0
