@@ -3,3 +3,5 @@ PADRÃO GLOBAL;global_calibrado_3_meses;12;25;11.0;0.45;0.55;0.25;0.35;1.25;Melh
 CASA / RESIDÊNCIA;especifico_casa_residencia;5;40;5.0;0.85;0.15000000000000002;0.2;0.5;2.0;Override aceito por melhora consistente fora da amostra
 SALA COMERCIAL;especifico_sala_comercial;9;20;15.0;0.6;0.4;0.25;0.65;2.5;Override aceito por melhora consistente fora da amostra
 GARAGEM / VAGA;conservador_garagem_vaga_v1_12;7;30;5.0;0.6666666666666666;0.3333333333333333;0.3;1.0;2.5;Configuração 1.12 preservada para evitar piora do segmento
+GARAGEM / VAGA RESIDENCIAL;conservador_garagem_vaga_residencial_v1_12;7;30;5.0;0.6666666666666666;0.3333333333333333;0.3;1.0;2.5;Herda o perfil conservador da família de garagens
+GARAGEM / VAGA NÃO RESIDENCIAL;conservador_garagem_vaga_nao_residencial_v1_12;7;30;5.0;0.6666666666666666;0.3333333333333333;0.3;1.0;2.5;Herda o perfil conservador da família de garagens

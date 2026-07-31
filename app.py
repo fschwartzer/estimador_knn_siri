@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.13.0"
-CORE_VERSION = "6.8.0"
+APP_EDITION = "LITE 1.14.0"
+CORE_VERSION = "6.9.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 12
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.13.0-20260730"
-CORE_MODULE_FILE = "estimador_knn_core_v680.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v680.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.14.0-20260731"
+CORE_MODULE_FILE = "estimador_knn_core_v690.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v690.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v680",
+        "_estimador_knn_core_runtime_v690",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v680",
+        "_estimador_knn_schema_runtime_v690",
     )
 except Exception as exc:
     st.error(
@@ -120,8 +120,10 @@ _required_schema = {
     "DERIVED_FONTE_NORMALIZACAO",
     "DERIVED_CONFLITO_TIPOLOGICO",
     "DERIVED_CONFIANCA_NORMALIZACAO",
+    "DERIVED_NATUREZA_USO_NORMALIZADA",
     "find_finalidade_crawler_column",
     "normalize_finalidade_crawler",
+    "natureza_uso_normalizada",
     "reference_area_preference",
     "enrich_known_schemas",
     "first_existing",
@@ -197,12 +199,16 @@ DERIVED_CONFLITO_TIPOLOGICO = _schema.DERIVED_CONFLITO_TIPOLOGICO
 DERIVED_CONFIANCA_NORMALIZACAO = (
     _schema.DERIVED_CONFIANCA_NORMALIZACAO
 )
+DERIVED_NATUREZA_USO_NORMALIZADA = (
+    _schema.DERIVED_NATUREZA_USO_NORMALIZADA
+)
 find_finalidade_crawler_column = (
     _schema.find_finalidade_crawler_column
 )
 normalize_finalidade_crawler = (
     _schema.normalize_finalidade_crawler
 )
+natureza_uso_normalizada = _schema.natureza_uso_normalizada
 reference_area_preference = _schema.reference_area_preference
 enrich_known_schemas = _schema.enrich_known_schemas
 first_existing = _schema.first_existing
@@ -1643,6 +1649,10 @@ selected_purpose = st.selectbox(
     "Finalidade da estimativa",
     purposes,
 )
+selected_use_nature = natureza_uso_normalizada(selected_purpose)
+st.caption(
+    f"Natureza de uso: **{selected_use_nature}**."
+)
 area_preference = reference_area_preference(selected_purpose)
 territorial = area_preference == "terreno"
 
@@ -1764,12 +1774,28 @@ typological_conflict_count = int(
         )
     ).sum()
 )
+clean_usable_count = int(
+    (
+        selected_rows_mask
+        & ~df[DERIVED_CONFLITO_TIPOLOGICO].isin(
+            ["Sim", "Moderado"]
+        )
+        & df[mapping.tipo_informacao]
+        .map(normalize_text)
+        .isin(["guia itbi", "oferta"])
+    ).sum()
+)
 st.caption(
     f"Finalidade da pesquisa: **{explicit_finality_count}** · "
     f"tipo do crawler: **{crawler_type_count}** · "
     f"SIAT: **{siat_count}** · "
     f"fallback ao SIAT: **{siat_fallback_count}** · "
-    f"conflitos: **{typological_conflict_count}**."
+    f"sem conflito: **{clean_usable_count}** · "
+    f"com conflito: **{typological_conflict_count}**."
+)
+st.caption(
+    "Registros com conflito tipológico são usados somente quando a "
+    "amostra sem conflito não atinge o K inicial configurado."
 )
 
 if territorial:
@@ -1998,6 +2024,10 @@ if calculate:
                 duplicate_registration_column
             ),
             duplicate_value_column=duplicate_value_column,
+            conflict_column=DERIVED_CONFLITO_TIPOLOGICO,
+            minimum_without_conflict=int(
+                selected_knn_parameters["min_k"]
+            ),
         )
 
         rental_rows_after_filter = int(
@@ -2110,6 +2140,51 @@ m4.metric(
     delta="limitado a 20%",
     delta_color="off",
 )
+
+conflict_fallback_used = bool(
+    preparation.diagnostics.get(
+        "conflict_fallback_used",
+        False,
+    )
+)
+conflict_rows_available = int(
+    preparation.diagnostics.get(
+        "conflict_rows_available",
+        0,
+    )
+)
+conflict_rows_included = int(
+    preparation.diagnostics.get(
+        "conflict_rows_included",
+        0,
+    )
+)
+conflict_free_count = int(
+    preparation.diagnostics.get(
+        "conflict_free_prepared_count",
+        0,
+    )
+)
+conflict_minimum = int(
+    preparation.diagnostics.get(
+        "conflict_minimum_required",
+        0,
+    )
+)
+
+if conflict_fallback_used:
+    st.warning(
+        "A amostra sem conflito ficou com "
+        f"**{conflict_free_count}** dados, abaixo do mínimo de "
+        f"**{conflict_minimum}**. Foram admitidos "
+        f"**{conflict_rows_included}** dados conflitantes como "
+        "contingência."
+    )
+elif conflict_rows_available:
+    st.info(
+        f"Foram desconsiderados **{conflict_rows_available}** dados com "
+        "conflito tipológico, pois a amostra sem conflito foi suficiente."
+    )
 
 raw_discount = preparation.diagnostics.get(
     "raw_discount_median",
@@ -2421,6 +2496,8 @@ with tabs[1]:
             DERIVED_FONTE_NORMALIZACAO,
             DERIVED_CONFLITO_TIPOLOGICO,
             DERIVED_CONFIANCA_NORMALIZACAO,
+            DERIVED_NATUREZA_USO_NORMALIZADA,
+            "_uso_conflito_tipologico",
             mapping.valor,
             run["reference_area_column"],
             mapping.area_construida,
@@ -2585,6 +2662,7 @@ with st.expander("Como o estimador trabalha"):
 - exclui ofertas de aluguel;
 - normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;
 - escolhe automaticamente parâmetros KNN calibrados nos dados dos últimos três meses, com perfis específicos apenas quando validados;
+- exclui dados com conflito tipológico enquanto a amostra limpa for suficiente e os admite somente como contingência;
 - remove primeiro duplicidades por tipo, inscrição SIAT e valor, mantendo a coleta mais recente;
 - usa identificadores genuínos do anúncio apenas como fallback;
 - exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;

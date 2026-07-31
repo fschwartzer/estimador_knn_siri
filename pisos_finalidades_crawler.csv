@@ -13,5 +13,7 @@ TERRENO;200,00;piso consolidado dos terrenos;30/04/2026 a 30/07/2026
 GLEBA;20,00;piso consolidado das glebas;30/04/2026 a 30/07/2026
 CONSTRUÇÃO EM ÁREA DE GLEBA;100,00;piso específico da finalidade;30/04/2026 a 30/07/2026
 GARAGEM / VAGA;150,00;menor piso conservador da família estacionamento;30/04/2026 a 30/07/2026
+GARAGEM / VAGA RESIDENCIAL;200,00;piso conservador dos espaços de estacionamento residenciais;30/04/2026 a 30/07/2026
+GARAGEM / VAGA NÃO RESIDENCIAL;150,00;piso conservador dos espaços de estacionamento não residenciais;30/04/2026 a 30/07/2026
 HOTEL;400,00;piso da família hospedagem;30/04/2026 a 30/07/2026
 IMÓVEL ESPECIAL;400,00;piso conservador da finalidade heterogênea;30/04/2026 a 30/07/2026

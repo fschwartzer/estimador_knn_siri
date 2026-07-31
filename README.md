@@ -1,4 +1,4 @@
-# estimador_knn_siri — LITE 1.13.0
+# estimador_knn_siri — LITE 1.14.0
 
 Edição LITE do estimador imobiliário por KNN, preparada para usuários sem
 conhecimento estatístico ou de aprendizado de máquina.
@@ -511,3 +511,28 @@ Na amostra completa de backtesting, o MdAPE passou de
 redução relativa de 13.7%.
 
 Os parâmetros aplicados ficam registrados na exportação de diagnóstico.
+
+
+## Conflito tipológico como contingência — LITE 1.14.0
+
+O aplicativo prepara inicialmente uma amostra sem registros classificados
+como conflito `Sim` ou `Moderado`. Se essa amostra atingir o K inicial do
+perfil selecionado, os dados conflitantes permanecem excluídos.
+
+Quando a amostra limpa não atinge esse mínimo, a preparação é refeita com os
+dados conflitantes. Esses registros são marcados como contingenciais nos
+comparáveis, alertas e exportações.
+
+## Finalidades residenciais e não residenciais
+
+A taxonomia passa a distinguir:
+
+- `GARAGEM / VAGA RESIDENCIAL`;
+- `GARAGEM / VAGA NÃO RESIDENCIAL`;
+- `GARAGEM / VAGA`, apenas quando a natureza não puder ser determinada.
+
+A coluna `__natureza_uso_normalizada` registra `RESIDENCIAL`,
+`NÃO RESIDENCIAL`, `TERRITORIAL` ou `INDETERMINADA`.
+
+As duas novas finalidades herdam o perfil KNN conservador anteriormente
+utilizado para garagens. Os demais parâmetros calibrados foram preservados.
