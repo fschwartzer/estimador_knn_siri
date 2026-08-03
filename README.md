@@ -1,4 +1,4 @@
-# estimador_knn_siri — LITE 1.15.0
+# estimador_knn_siri — LITE 1.16.0
 
 Edição LITE do estimador imobiliário por KNN, preparada para usuários sem
 conhecimento estatístico ou de aprendizado de máquina.
@@ -566,3 +566,52 @@ Travas:
 
 Parâmetros KNN, política de conflito tipológico e taxonomia da versão 1.14
 foram preservados.
+
+
+## Regime seguro de área — LITE 1.16.0
+
+As finalidades construídas deixam de exigir universalmente a área privativa.
+
+A interface oferece:
+
+- `Automática`;
+- `Área privativa`;
+- `Área total/construída`.
+
+Cada alternativa é preparada separadamente, com deduplicação, fator de
+oferta, conflitos tipológicos, pisos e pré-filtros. Os valores unitários de
+regimes diferentes nunca são misturados na mesma estimativa.
+
+### Modo automático
+
+1. identifica o regime preferencial da finalidade;
+2. prepara a amostra privativa e a amostra total/construída;
+3. mantém o regime preferencial se ele atingir o K inicial;
+4. caso contrário, escolhe a alternativa quando ela atingir o K inicial;
+5. se nenhuma atingir o mínimo, interrompe a seleção automática e informa
+   as contagens de cada regime.
+
+O usuário pode selecionar manualmente um regime com amostra inferior ao K
+inicial. Nesse caso, o aplicativo registra e alerta a limitação.
+
+### Pisos
+
+O piso absoluto por finalidade é mantido quando o regime escolhido é
+compatível com a base originalmente prevista:
+
+- finalidade privativa com área privativa;
+- finalidade construída com área total/construída;
+- finalidades que admitem ambas as bases.
+
+Quando o aplicativo usa uma base alternativa ainda não calibrada, o piso
+absoluto é desativado. Permanecem ativos os filtros relativos, robustos,
+locais e de ruptura entre grupos.
+
+### Atributos físicos
+
+Somente a área do regime selecionado participa da distância física do KNN.
+Isso evita exigir simultaneamente área privativa e área total nos mesmos
+comparáveis.
+
+A exportação informa o modo solicitado, regime escolhido, motivo da escolha,
+contagens por regime e situação do piso.

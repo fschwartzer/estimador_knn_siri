@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.15.0"
-CORE_VERSION = "6.10.0"
+APP_EDITION = "LITE 1.16.0"
+CORE_VERSION = "6.11.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 12
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.15.0-20260731"
-CORE_MODULE_FILE = "estimador_knn_core_v6100.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v6100.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.16.0-20260803"
+CORE_MODULE_FILE = "estimador_knn_core_v6110.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v6110.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v6100",
+        "_estimador_knn_core_runtime_v6110",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v6100",
+        "_estimador_knn_schema_runtime_v6110",
     )
 except Exception as exc:
     st.error(
@@ -107,11 +107,17 @@ _required_knn = {
     "CALIBRATED_GLOBAL_PARAMETERS",
     "CALIBRATED_PURPOSE_PARAMETERS",
     "calibrated_parameters_for_purpose",
+    "AREA_REGIME_PRIVATE",
+    "AREA_REGIME_TOTAL_BUILT",
+    "choose_area_regime",
+    "preferred_area_regime",
+    "area_floor_is_compatible",
 }
 _required_schema = {
     "DERIVED_AREA_CONSTRUIDA",
     "DERIVED_AREA_LOTE",
     "DERIVED_AREA_PRIVATIVA",
+    "DERIVED_REGIME_AREA",
     "DERIVED_TESTADA",
     "DERIVED_FINALIDADE_CRAWLER_INFORMADA",
     "DERIVED_FINALIDADE_SIAT_NORMALIZADA",
@@ -177,10 +183,16 @@ CALIBRATED_PURPOSE_PARAMETERS = _knn.CALIBRATED_PURPOSE_PARAMETERS
 calibrated_parameters_for_purpose = (
     _knn.calibrated_parameters_for_purpose
 )
+AREA_REGIME_PRIVATE = _knn.AREA_REGIME_PRIVATE
+AREA_REGIME_TOTAL_BUILT = _knn.AREA_REGIME_TOTAL_BUILT
+choose_area_regime = _knn.choose_area_regime
+preferred_area_regime = _knn.preferred_area_regime
+area_floor_is_compatible = _knn.area_floor_is_compatible
 
 DERIVED_AREA_CONSTRUIDA = _schema.DERIVED_AREA_CONSTRUIDA
 DERIVED_AREA_LOTE = _schema.DERIVED_AREA_LOTE
 DERIVED_AREA_PRIVATIVA = _schema.DERIVED_AREA_PRIVATIVA
+DERIVED_REGIME_AREA = _schema.DERIVED_REGIME_AREA
 DERIVED_TESTADA = _schema.DERIVED_TESTADA
 DERIVED_FINALIDADE_CRAWLER_INFORMADA = (
     _schema.DERIVED_FINALIDADE_CRAWLER_INFORMADA
@@ -1658,11 +1670,15 @@ territorial = area_preference == "terreno"
 
 area_preference_labels = {
     "terreno": "área total do lote",
-    "privativa": "área privativa",
-    "privativa_ou_construida": (
-        "área privativa, com área construída como alternativa"
+    "privativa": (
+        "área privativa, com área total/construída como alternativa"
     ),
-    "construida": "área construída",
+    "privativa_ou_construida": (
+        "área privativa ou área total/construída"
+    ),
+    "construida": (
+        "área total/construída, com área privativa como alternativa"
+    ),
 }
 st.caption(
     "Todos os comparáveis serão selecionados pela finalidade crawler "
@@ -1834,6 +1850,23 @@ with st.form("lite_property_form"):
             target_area_privativa = 0.0
             target_area_construida = 0.0
         else:
+            available_area_modes = ["Automática"]
+            if mapping.area_privativa:
+                available_area_modes.append("Área privativa")
+            if mapping.area_construida:
+                available_area_modes.append("Área total/construída")
+
+            requested_area_mode = st.radio(
+                "Base de área",
+                available_area_modes,
+                horizontal=True,
+                help=(
+                    "A estimativa utiliza um único denominador. No modo "
+                    "automático, a base preferencial só é mantida quando "
+                    "atinge o K inicial após todos os filtros."
+                ),
+            )
+
             c1, c2 = st.columns(2)
             with c1:
                 target_area_privativa = (
@@ -1858,9 +1891,12 @@ with st.form("lite_property_form"):
                 target_area_construida = (
                     st.number_input(
                         (
-                            "Área construída (m²) — referência principal"
+                            (
+                                "Área total/construída (m²) — "
+                                "referência principal"
+                            )
                             if area_preference == "construida"
-                            else "Área construída (m²)"
+                            else "Área total/construída (m²)"
                         ),
                         min_value=0.0,
                         value=0.0,
@@ -1871,6 +1907,9 @@ with st.form("lite_property_form"):
                 )
             target_area_lote = 0.0
             target_testada = 0.0
+
+        if territorial:
+            requested_area_mode = "Área total do lote"
 
         c3, c4 = st.columns(2)
         with c3:
@@ -1903,82 +1942,15 @@ if calculate:
                 raise ValueError("Informe a área total do lote.")
             if target_testada <= 0:
                 raise ValueError("Informe a testada do terreno.")
-            reference_area_column = mapping.siat_area_total_lote
-        else:
-            if area_preference == "privativa":
-                if (
-                    mapping.area_privativa
-                    and target_area_privativa > 0
-                ):
-                    reference_area_column = mapping.area_privativa
-                elif (
-                    not mapping.area_privativa
-                    and mapping.area_construida
-                    and target_area_construida > 0
-                ):
-                    reference_area_column = mapping.area_construida
-                else:
-                    raise ValueError(
-                        "Para esta finalidade, informe a área privativa."
-                    )
-            elif area_preference == "construida":
-                if (
-                    mapping.area_construida
-                    and target_area_construida > 0
-                ):
-                    reference_area_column = mapping.area_construida
-                elif (
-                    not mapping.area_construida
-                    and mapping.area_privativa
-                    and target_area_privativa > 0
-                ):
-                    reference_area_column = mapping.area_privativa
-                else:
-                    raise ValueError(
-                        "Para esta finalidade, informe a área construída."
-                    )
-            else:
-                if (
-                    target_area_privativa > 0
-                    and mapping.area_privativa
-                ):
-                    reference_area_column = mapping.area_privativa
-                elif (
-                    target_area_construida > 0
-                    and mapping.area_construida
-                ):
-                    reference_area_column = mapping.area_construida
-                else:
-                    raise ValueError(
-                        "Informe a área privativa ou a área construída."
-                    )
 
-        target = {
-            "area_construida": (
-                target_area_construida
-                if target_area_construida > 0
-                else None
-            ),
-            "area_privativa": (
-                target_area_privativa
-                if target_area_privativa > 0
-                else None
-            ),
-            "siat_area_total_lote": (
-                target_area_lote if target_area_lote > 0 else None
-            ),
-            "testada": target_testada if target_testada > 0 else None,
-            "latitude": target_latitude,
-            "longitude": target_longitude,
-        }
-
-        reference_key = {
-            mapping.area_construida: "area_construida",
-            mapping.area_privativa: "area_privativa",
-            mapping.siat_area_total_lote: "siat_area_total_lote",
-        }.get(reference_area_column)
-        if reference_key:
-            target[reference_area_column] = target[reference_key]
+        if (
+            not territorial
+            and target_area_privativa <= 0
+            and target_area_construida <= 0
+        ):
+            raise ValueError(
+                "Informe a área privativa ou a área total/construída."
+            )
 
         original_columns = [str(column) for column in original_df.columns]
         duplicate_date_column = choose_existing(
@@ -2009,25 +1981,226 @@ if calculate:
             if column in original_columns
         )
 
-        preparation = prepare_data(
-            df=df,
-            mapping=mapping,
-            selected_purpose=selected_purpose,
-            floor_purpose=selected_purpose,
-            value_kind=detect_value_kind(mapping.valor),
-            reference_area_column=reference_area_column,
-            discount_cap=DISCOUNT_CAP,
-            remove_offer_duplicates=True,
-            duplicate_date_column=duplicate_date_column,
-            duplicate_identifier_columns=duplicate_identifier_columns,
-            duplicate_registration_column=(
-                duplicate_registration_column
+        minimum_area_sample = int(
+            selected_knn_parameters["min_k"]
+        )
+        preferred_regime = preferred_area_regime(area_preference)
+
+        candidate_specs = {}
+        if territorial:
+            candidate_specs["terreno"] = {
+                "column": mapping.siat_area_total_lote,
+                "target_value": target_area_lote,
+                "floor_purpose": selected_purpose,
+                "floor_compatible": True,
+                "label": "Área total do lote",
+            }
+        else:
+            if (
+                mapping.area_privativa
+                and target_area_privativa > 0
+            ):
+                private_floor_compatible = area_floor_is_compatible(
+                    area_preference,
+                    AREA_REGIME_PRIVATE,
+                )
+                candidate_specs[AREA_REGIME_PRIVATE] = {
+                    "column": mapping.area_privativa,
+                    "target_value": target_area_privativa,
+                    "floor_purpose": (
+                        selected_purpose
+                        if private_floor_compatible
+                        else None
+                    ),
+                    "floor_compatible": private_floor_compatible,
+                    "label": "Área privativa",
+                }
+
+            if (
+                mapping.area_construida
+                and target_area_construida > 0
+            ):
+                total_floor_compatible = area_floor_is_compatible(
+                    area_preference,
+                    AREA_REGIME_TOTAL_BUILT,
+                )
+                candidate_specs[AREA_REGIME_TOTAL_BUILT] = {
+                    "column": mapping.area_construida,
+                    "target_value": target_area_construida,
+                    "floor_purpose": (
+                        selected_purpose
+                        if total_floor_compatible
+                        else None
+                    ),
+                    "floor_compatible": total_floor_compatible,
+                    "label": "Área total/construída",
+                }
+
+        preparation_candidates = {}
+        preparation_errors = {}
+        for regime_name, spec in candidate_specs.items():
+            try:
+                prepared_candidate = prepare_data(
+                    df=df,
+                    mapping=mapping,
+                    selected_purpose=selected_purpose,
+                    floor_purpose=spec["floor_purpose"],
+                    value_kind=detect_value_kind(mapping.valor),
+                    reference_area_column=spec["column"],
+                    discount_cap=DISCOUNT_CAP,
+                    remove_offer_duplicates=True,
+                    duplicate_date_column=duplicate_date_column,
+                    duplicate_identifier_columns=(
+                        duplicate_identifier_columns
+                    ),
+                    duplicate_registration_column=(
+                        duplicate_registration_column
+                    ),
+                    duplicate_value_column=duplicate_value_column,
+                    conflict_column=DERIVED_CONFLITO_TIPOLOGICO,
+                    minimum_without_conflict=minimum_area_sample,
+                )
+                preparation_candidates[regime_name] = (
+                    prepared_candidate
+                )
+            except Exception as exc:
+                preparation_errors[regime_name] = str(exc)
+
+        if territorial:
+            if "terreno" not in preparation_candidates:
+                raise ValueError(
+                    preparation_errors.get(
+                        "terreno",
+                        "Não foi possível preparar a amostra territorial.",
+                    )
+                )
+            selected_area_regime = "terreno"
+            area_selection = {
+                "reason": "regime territorial obrigatório",
+                "automatic": True,
+                "sample_count": len(
+                    preparation_candidates["terreno"].data
+                ),
+                "sample_sufficient": (
+                    len(preparation_candidates["terreno"].data)
+                    >= minimum_area_sample
+                ),
+                "private_count": 0,
+                "total_built_count": 0,
+            }
+        else:
+            private_count = (
+                len(
+                    preparation_candidates[
+                        AREA_REGIME_PRIVATE
+                    ].data
+                )
+                if AREA_REGIME_PRIVATE in preparation_candidates
+                else 0
+            )
+            total_built_count = (
+                len(
+                    preparation_candidates[
+                        AREA_REGIME_TOTAL_BUILT
+                    ].data
+                )
+                if AREA_REGIME_TOTAL_BUILT in preparation_candidates
+                else 0
+            )
+
+            area_selection = choose_area_regime(
+                requested_mode=requested_area_mode,
+                preferred_regime_value=preferred_regime,
+                private_available=(
+                    AREA_REGIME_PRIVATE
+                    in preparation_candidates
+                ),
+                total_built_available=(
+                    AREA_REGIME_TOTAL_BUILT
+                    in preparation_candidates
+                ),
+                private_count=private_count,
+                total_built_count=total_built_count,
+                minimum_required=minimum_area_sample,
+            )
+            selected_area_regime = area_selection["regime"]
+
+        preparation = preparation_candidates[
+            selected_area_regime
+        ]
+        selected_area_spec = candidate_specs[
+            selected_area_regime
+        ]
+        reference_area_column = selected_area_spec["column"]
+
+        # Somente a área do regime selecionado entra como atributo físico.
+        # Isso impede que a mesma estimativa exija simultaneamente áreas
+        # privativa e total/construída nos comparáveis.
+        target = {
+            "area_construida": (
+                target_area_construida
+                if selected_area_regime
+                == AREA_REGIME_TOTAL_BUILT
+                else None
             ),
-            duplicate_value_column=duplicate_value_column,
-            conflict_column=DERIVED_CONFLITO_TIPOLOGICO,
-            minimum_without_conflict=int(
-                selected_knn_parameters["min_k"]
+            "area_privativa": (
+                target_area_privativa
+                if selected_area_regime
+                == AREA_REGIME_PRIVATE
+                else None
             ),
+            "siat_area_total_lote": (
+                target_area_lote if territorial else None
+            ),
+            "testada": target_testada if territorial else None,
+            "latitude": target_latitude,
+            "longitude": target_longitude,
+        }
+        target[reference_area_column] = selected_area_spec[
+            "target_value"
+        ]
+
+        preparation.data[DERIVED_REGIME_AREA] = (
+            selected_area_regime
+        )
+        preparation.diagnostics.update(
+            {
+                "area_mode_requested": requested_area_mode,
+                "area_regime_selected": selected_area_regime,
+                "area_regime_label": selected_area_spec["label"],
+                "area_regime_reason": area_selection["reason"],
+                "area_regime_automatic": area_selection["automatic"],
+                "area_regime_sample_count": (
+                    area_selection["sample_count"]
+                ),
+                "area_regime_sample_sufficient": (
+                    area_selection["sample_sufficient"]
+                ),
+                "area_private_prepared_count": (
+                    area_selection["private_count"]
+                ),
+                "area_total_built_prepared_count": (
+                    area_selection["total_built_count"]
+                ),
+                "area_floor_compatible": (
+                    selected_area_spec["floor_compatible"]
+                ),
+                "area_floor_applied": (
+                    selected_area_spec["floor_purpose"]
+                    is not None
+                ),
+                "area_floor_purpose": (
+                    selected_area_spec["floor_purpose"] or ""
+                ),
+                "area_preparation_errors": (
+                    " | ".join(
+                        f"{key}: {value}"
+                        for key, value in sorted(
+                            preparation_errors.items()
+                        )
+                    )
+                ),
+            }
         )
 
         rental_rows_after_filter = int(
@@ -2083,6 +2256,22 @@ if calculate:
             "market_segment": selected_purpose,
             "territorial": territorial,
             "reference_area_column": reference_area_column,
+            "area_regime": selected_area_regime,
+            "area_regime_label": selected_area_spec["label"],
+            "area_regime_reason": area_selection["reason"],
+            "area_mode_requested": requested_area_mode,
+            "area_floor_compatible": (
+                selected_area_spec["floor_compatible"]
+            ),
+            "area_floor_applied": (
+                selected_area_spec["floor_purpose"] is not None
+            ),
+            "area_regime_counts": {
+                "privativa": area_selection["private_count"],
+                "total_construida": (
+                    area_selection["total_built_count"]
+                ),
+            },
             "target": target,
             "duplicate_date_column": duplicate_date_column,
             "knn_parameters": dict(selected_knn_parameters),
@@ -2140,6 +2329,32 @@ m4.metric(
     delta="limitado a 20%",
     delta_color="off",
 )
+
+area_counts = run.get("area_regime_counts", {})
+st.info(
+    f"Base de área selecionada: **{run['area_regime_label']}**. "
+    f"Motivo: {run['area_regime_reason']}. "
+    f"Amostras preparadas — privativa: "
+    f"**{area_counts.get('privativa', 0)}**; "
+    f"total/construída: "
+    f"**{area_counts.get('total_construida', 0)}**."
+)
+
+if not run.get("area_floor_compatible", True):
+    st.warning(
+        "O piso absoluto por finalidade foi desativado nesta estimativa, "
+        "pois ele não foi calibrado para a base alternativa de área. "
+        "Os filtros relativos e robustos permanecem ativos."
+    )
+elif not preparation.diagnostics.get(
+    "area_regime_sample_sufficient",
+    True,
+):
+    st.warning(
+        "O regime escolhido manualmente ficou abaixo do K inicial. "
+        "A estimativa utilizará a amostra disponível e registrará essa "
+        "limitação no diagnóstico."
+    )
 
 conflict_fallback_used = bool(
     preparation.diagnostics.get(
@@ -2571,6 +2786,7 @@ with tabs[1]:
             DERIVED_CONFLITO_TIPOLOGICO,
             DERIVED_CONFIANCA_NORMALIZACAO,
             DERIVED_NATUREZA_USO_NORMALIZADA,
+            DERIVED_REGIME_AREA,
             "_uso_conflito_tipologico",
             mapping.valor,
             run["reference_area_column"],
@@ -2705,6 +2921,23 @@ diagnostics = {
     "valor_total_estimado": estimate.estimated_total_value,
     "valor_unitario_estimado": estimate.estimated_unit_value,
     "area_referencia": run["reference_area_column"],
+    "regime_area": run["area_regime"],
+    "regime_area_rotulo": run["area_regime_label"],
+    "modo_area_solicitado": run["area_mode_requested"],
+    "motivo_selecao_regime_area": run["area_regime_reason"],
+    "piso_compativel_com_regime_area": (
+        run["area_floor_compatible"]
+    ),
+    "piso_aplicado_no_regime_area": run["area_floor_applied"],
+    "comparaveis_regime_privativo": (
+        run["area_regime_counts"].get("privativa", 0)
+    ),
+    "comparaveis_regime_total_construido": (
+        run["area_regime_counts"].get(
+            "total_construida",
+            0,
+        )
+    ),
     "faixa_alerta_desconto": discount_alert["band"],
     "classificacao_desconto": discount_alert["title"],
     "faixa_composicao_amostral": sample_alert["band"],
@@ -2733,6 +2966,8 @@ with st.expander("Como o estimador trabalha"):
     st.markdown(
         """
 - considera apenas a finalidade escolhida;
+- utiliza um único regime de área por estimativa: privativo ou total/construído;
+- no modo automático, troca para a base alternativa somente quando a preferencial não atinge o K inicial;
 - exclui ofertas de aluguel;
 - normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;
 - escolhe automaticamente parâmetros KNN calibrados nos dados dos últimos três meses, com perfis específicos apenas quando validados;

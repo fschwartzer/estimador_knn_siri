@@ -1,6 +1,6 @@
-estimador_knn_siri LITE 1.15.0
-Filtro local adaptativo seguro para cauda inferior.
-Mediana ponderada, MAD/IQR e ruptura entre grupos de valor.
-Build: estimador-knn-siri-lite-1.15.0-20260731
-Núcleo: estimador_knn_core_v6100.py / 6.10.0
-Schema: estimador_knn_schema_v6100.py / 6.10.0
+estimador_knn_siri LITE 1.16.0
+Área total/construída disponível como alternativa segura.
+Um único regime de área por estimativa.
+Build: estimador-knn-siri-lite-1.16.0-20260803
+Núcleo: estimador_knn_core_v6110.py / 6.11.0
+Schema: estimador_knn_schema_v6110.py / 6.11.0
