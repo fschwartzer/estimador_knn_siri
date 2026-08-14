@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.16.0"
-CORE_VERSION = "6.11.0"
+APP_EDITION = "LITE 1.17.0"
+CORE_VERSION = "6.12.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
 MIN_K = 12
@@ -34,9 +34,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.16.0-20260803"
-CORE_MODULE_FILE = "estimador_knn_core_v6110.py"
-SCHEMA_MODULE_FILE = "estimador_knn_schema_v6110.py"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.17.0-20260814"
+CORE_MODULE_FILE = "estimador_knn_core_v6120.py"
+SCHEMA_MODULE_FILE = "estimador_knn_schema_v6120.py"
 
 
 def _load_exact_source_module(
@@ -83,11 +83,11 @@ def _load_exact_source_module(
 try:
     _knn, _knn_path, _knn_hash = _load_exact_source_module(
         CORE_MODULE_FILE,
-        "_estimador_knn_core_runtime_v6110",
+        "_estimador_knn_core_runtime_v6120",
     )
     _schema, _schema_path, _schema_hash = _load_exact_source_module(
         SCHEMA_MODULE_FILE,
-        "_estimador_knn_schema_runtime_v6110",
+        "_estimador_knn_schema_runtime_v6120",
     )
 except Exception as exc:
     st.error(
@@ -112,6 +112,9 @@ _required_knn = {
     "choose_area_regime",
     "preferred_area_regime",
     "area_floor_is_compatible",
+    "MIN_CONSTRUCTION_YEAR",
+    "MAX_CONSTRUCTION_YEAR",
+    "valid_construction_year_mask",
 }
 _required_schema = {
     "DERIVED_AREA_CONSTRUIDA",
@@ -188,6 +191,9 @@ AREA_REGIME_TOTAL_BUILT = _knn.AREA_REGIME_TOTAL_BUILT
 choose_area_regime = _knn.choose_area_regime
 preferred_area_regime = _knn.preferred_area_regime
 area_floor_is_compatible = _knn.area_floor_is_compatible
+MIN_CONSTRUCTION_YEAR = _knn.MIN_CONSTRUCTION_YEAR
+MAX_CONSTRUCTION_YEAR = _knn.MAX_CONSTRUCTION_YEAR
+valid_construction_year_mask = _knn.valid_construction_year_mask
 
 DERIVED_AREA_CONSTRUIDA = _schema.DERIVED_AREA_CONSTRUIDA
 DERIVED_AREA_LOTE = _schema.DERIVED_AREA_LOTE
@@ -556,6 +562,15 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
             ],
         )
     )
+    ano_construcao = choose_existing(
+        columns,
+        [
+            "siat_ano",
+            "ano_construcao",
+            "ano_da_construcao",
+            "ano_construção",
+        ],
+    )
 
     required = {
         "tipo de informação": tipo,
@@ -578,6 +593,7 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
         longitude=longitude,
         siat_area_total_lote=area_lote,
         testada=testada,
+        ano_construcao=ano_construcao,
     )
     return mapping, []
 
@@ -587,6 +603,26 @@ def detect_value_kind(value_column: str) -> str:
     if "unitario" in normalized or "unitário" in normalized:
         return "Valor unitário por m²"
     return "Valor total"
+
+
+def usable_prepared_count(
+    preparation: PreparationResult,
+    mapping: ColumnMapping,
+    territorial: bool,
+) -> int:
+    """Conta candidatos com os atributos físicos exigidos pelo regime."""
+    if territorial:
+        return int(len(preparation.data))
+    if (
+        not mapping.ano_construcao
+        or mapping.ano_construcao not in preparation.data.columns
+    ):
+        return 0
+    return int(
+        valid_construction_year_mask(
+            preparation.data[mapping.ano_construcao]
+        ).sum()
+    )
 
 
 
@@ -1827,6 +1863,12 @@ else:
             "A planilha não possui área privativa nem área construída utilizável."
         )
         st.stop()
+    if not mapping.ano_construcao:
+        st.error(
+            "A planilha não possui a coluna siat_ano, necessária para "
+            "avaliar imóveis prediais."
+        )
+        st.stop()
 
 with st.form("lite_property_form"):
     with st.container(border=True):
@@ -1849,6 +1891,7 @@ with st.form("lite_property_form"):
                 )
             target_area_privativa = 0.0
             target_area_construida = 0.0
+            target_ano_construcao = None
         else:
             available_area_modes = ["Automática"]
             if mapping.area_privativa:
@@ -1905,6 +1948,19 @@ with st.form("lite_property_form"):
                     if mapping.area_construida
                     else 0.0
                 )
+            target_ano_construcao = st.number_input(
+                "Ano da construção",
+                min_value=MIN_CONSTRUCTION_YEAR,
+                max_value=MAX_CONSTRUCTION_YEAR,
+                value=None,
+                step=1,
+                format="%d",
+                placeholder="Ex.: 1998",
+                help=(
+                    "Usado com a área como atributo físico do KNN. "
+                    "O campo corresponde à coluna siat_ano dos comparáveis."
+                ),
+            )
             target_area_lote = 0.0
             target_testada = 0.0
 
@@ -1951,6 +2007,8 @@ if calculate:
             raise ValueError(
                 "Informe a área privativa ou a área total/construída."
             )
+        if not territorial and target_ano_construcao is None:
+            raise ValueError("Informe o ano da construção.")
 
         original_columns = [str(column) for column in original_df.columns]
         duplicate_date_column = choose_existing(
@@ -2078,11 +2136,17 @@ if calculate:
             area_selection = {
                 "reason": "regime territorial obrigatório",
                 "automatic": True,
-                "sample_count": len(
-                    preparation_candidates["terreno"].data
+                "sample_count": usable_prepared_count(
+                    preparation_candidates["terreno"],
+                    mapping,
+                    territorial=True,
                 ),
                 "sample_sufficient": (
-                    len(preparation_candidates["terreno"].data)
+                    usable_prepared_count(
+                        preparation_candidates["terreno"],
+                        mapping,
+                        territorial=True,
+                    )
                     >= minimum_area_sample
                 ),
                 "private_count": 0,
@@ -2090,19 +2154,19 @@ if calculate:
             }
         else:
             private_count = (
-                len(
-                    preparation_candidates[
-                        AREA_REGIME_PRIVATE
-                    ].data
+                usable_prepared_count(
+                    preparation_candidates[AREA_REGIME_PRIVATE],
+                    mapping,
+                    territorial=False,
                 )
                 if AREA_REGIME_PRIVATE in preparation_candidates
                 else 0
             )
             total_built_count = (
-                len(
-                    preparation_candidates[
-                        AREA_REGIME_TOTAL_BUILT
-                    ].data
+                usable_prepared_count(
+                    preparation_candidates[AREA_REGIME_TOTAL_BUILT],
+                    mapping,
+                    territorial=False,
                 )
                 if AREA_REGIME_TOTAL_BUILT in preparation_candidates
                 else 0
@@ -2133,9 +2197,9 @@ if calculate:
         ]
         reference_area_column = selected_area_spec["column"]
 
-        # Somente a área do regime selecionado entra como atributo físico.
-        # Isso impede que a mesma estimativa exija simultaneamente áreas
-        # privativa e total/construída nos comparáveis.
+        # A área do regime selecionado e, nos imóveis prediais, o ano da
+        # construção compõem a distância física. As duas bases de área não
+        # são exigidas simultaneamente nos comparáveis.
         target = {
             "area_construida": (
                 target_area_construida
@@ -2153,6 +2217,12 @@ if calculate:
                 target_area_lote if territorial else None
             ),
             "testada": target_testada if territorial else None,
+            "ano_construcao": (
+                float(target_ano_construcao)
+                if not territorial
+                and target_ano_construcao is not None
+                else None
+            ),
             "latitude": target_latitude,
             "longitude": target_longitude,
         }
@@ -2339,6 +2409,19 @@ st.info(
     f"total/construída: "
     f"**{area_counts.get('total_construida', 0)}**."
 )
+
+construction_year_excluded = int(
+    estimate.diagnostics.get(
+        "construction_year_invalid_excluded",
+        0,
+    )
+)
+if construction_year_excluded:
+    st.warning(
+        f"Foram excluídos **{construction_year_excluded}** candidatos com "
+        "ano da construção ausente ou inválido. Esses registros constam "
+        "na aba de dados excluídos da exportação."
+    )
 
 if not run.get("area_floor_compatible", True):
     st.warning(
@@ -2794,6 +2877,7 @@ with tabs[1]:
             mapping.area_privativa,
             mapping.siat_area_total_lote,
             mapping.testada,
+            mapping.ano_construcao,
             mapping.latitude,
             mapping.longitude,
             "_valor_unitario_original",
@@ -2921,6 +3005,9 @@ diagnostics = {
     "valor_total_estimado": estimate.estimated_total_value,
     "valor_unitario_estimado": estimate.estimated_unit_value,
     "area_referencia": run["reference_area_column"],
+    "ano_construcao_avaliando": (
+        run["target"].get("ano_construcao")
+    ),
     "regime_area": run["area_regime"],
     "regime_area_rotulo": run["area_regime_label"],
     "modo_area_solicitado": run["area_mode_requested"],
@@ -2967,6 +3054,7 @@ with st.expander("Como o estimador trabalha"):
         """
 - considera apenas a finalidade escolhida;
 - utiliza um único regime de área por estimativa: privativo ou total/construído;
+- em imóveis prediais, usa a área selecionada e o ano da construção como atributos físicos;
 - no modo automático, troca para a base alternativa somente quando a preferencial não atinge o K inicial;
 - exclui ofertas de aluguel;
 - normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;

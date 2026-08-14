@@ -1,6 +1,6 @@
-estimador_knn_siri LITE 1.16.0
-Área total/construída disponível como alternativa segura.
-Um único regime de área por estimativa.
-Build: estimador-knn-siri-lite-1.16.0-20260803
-Núcleo: estimador_knn_core_v6110.py / 6.11.0
-Schema: estimador_knn_schema_v6110.py / 6.11.0
+estimador_knn_siri LITE 1.17.0
+Ano da construção (siat_ano) como atributo físico de imóveis prediais.
+Área e ano compartilham o componente físico; terrenos permanecem inalterados.
+Build: estimador-knn-siri-lite-1.17.0-20260814
+Núcleo: estimador_knn_core_v6120.py / 6.12.0
+Schema: estimador_knn_schema_v6120.py / 6.12.0
