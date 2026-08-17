@@ -2687,9 +2687,20 @@ def estimate_knn(
     
     invalid_construction_years = preparation.data.iloc[0:0].copy()
     construction_year_excluded_count = 0
+    
     if uses_construction_year:
-        invalid_construction_years = preparation.data.loc[~year_mask].copy()
-        construction_year_excluded_count = int(len(invalid_construction_years))
+        year_mask = valid_construction_year_mask(
+            preparation.data[mapping.ano_construcao]
+        )
+    
+        invalid_construction_years = preparation.data.loc[
+            ~year_mask
+        ].copy()
+    
+        construction_year_excluded_count = int(
+            len(invalid_construction_years)
+        )
+    
         if construction_year_excluded_count:
             invalid_construction_years["_etapa_controle"] = (
                 "validação do ano da construção"
@@ -2702,6 +2713,7 @@ def estimate_knn(
             invalid_construction_years = _ordered_control_columns(
                 invalid_construction_years
             )
+        
     data = _valid_candidates(preparation.data, mapping, active_features)
     candidates_after_physical_validation = int(len(data))
 
