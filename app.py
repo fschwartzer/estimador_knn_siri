@@ -609,21 +609,28 @@ def usable_prepared_count(
     preparation: PreparationResult,
     mapping: ColumnMapping,
     territorial: bool,
+    use_construction_year: bool = False,
 ) -> int:
-    """Conta candidatos com os atributos físicos exigidos pelo regime."""
-    if territorial:
+    """
+    Conta candidatos utilizáveis pelo regime.
+
+    O ano da construção só restringe a amostra quando estiver
+    efetivamente sendo utilizado como característica do KNN.
+    """
+    if territorial or not use_construction_year:
         return int(len(preparation.data))
+
     if (
         not mapping.ano_construcao
         or mapping.ano_construcao not in preparation.data.columns
     ):
         return 0
+
     return int(
         valid_construction_year_mask(
             preparation.data[mapping.ano_construcao]
         ).sum()
     )
-
 
 
 def classify_discount_alert(
@@ -1872,12 +1879,12 @@ else:
             "A planilha não possui área privativa nem área construída utilizável."
         )
         st.stop()
+
     if not mapping.ano_construcao:
-        st.error(
-            "A planilha não possui a coluna siat_ano, necessária para "
-            "avaliar imóveis prediais."
+        st.warning(
+            "A planilha não possui informação sobre o ano da construção. "
+            "A estimativa será realizada sem essa característica."
         )
-        st.stop()
 
 with st.form("lite_property_form"):
     with st.container(border=True):
@@ -1957,19 +1964,27 @@ with st.form("lite_property_form"):
                     if mapping.area_construida
                     else 0.0
                 )
-            target_ano_construcao = st.number_input(
-                "Ano da construção",
-                min_value=MIN_CONSTRUCTION_YEAR,
-                max_value=MAX_CONSTRUCTION_YEAR,
-                value=None,
-                step=1,
-                format="%d",
-                placeholder="Ex.: 1998",
-                help=(
-                    "Usado com a área como atributo físico do KNN. "
-                    "O campo corresponde à coluna siat_ano dos comparáveis."
-                ),
-            )
+            if mapping.ano_construcao:
+                target_ano_construcao = st.number_input(
+                    "Ano da construção (opcional)",
+                    min_value=MIN_CONSTRUCTION_YEAR,
+                    max_value=MAX_CONSTRUCTION_YEAR,
+                    value=None,
+                    step=1,
+                    format="%d",
+                    placeholder="Ex.: 1998",
+                    help=(
+                        "Quando informado, o ano da construção também é utilizado "
+                        "na comparação física entre os imóveis. Se deixado em branco, "
+                        "a estimativa será realizada sem essa característica."
+                    ),
+                )
+            else:
+                target_ano_construcao = None
+                st.caption(
+                    "Ano da construção não disponível nesta planilha. "
+                    "Essa característica não será utilizada no KNN."
+                )
             target_area_lote = 0.0
             target_testada = 0.0
 
@@ -2016,8 +2031,11 @@ if calculate:
             raise ValueError(
                 "Informe a área privativa ou a área total/construída."
             )
-        if not territorial and target_ano_construcao is None:
-            raise ValueError("Informe o ano da construção.")
+        use_construction_year = (
+            not territorial
+            and mapping.ano_construcao is not None
+            and target_ano_construcao is not None
+        )
 
         original_columns = [str(column) for column in original_df.columns]
         duplicate_date_column = choose_existing(
@@ -2167,15 +2185,18 @@ if calculate:
                     preparation_candidates[AREA_REGIME_PRIVATE],
                     mapping,
                     territorial=False,
+                    use_construction_year=use_construction_year,
                 )
                 if AREA_REGIME_PRIVATE in preparation_candidates
                 else 0
             )
+            
             total_built_count = (
                 usable_prepared_count(
                     preparation_candidates[AREA_REGIME_TOTAL_BUILT],
                     mapping,
                     territorial=False,
+                    use_construction_year=use_construction_year,
                 )
                 if AREA_REGIME_TOTAL_BUILT in preparation_candidates
                 else 0
