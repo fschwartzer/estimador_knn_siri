@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-
 import base64
 from pathlib import Path
 
@@ -1498,7 +1497,7 @@ def dataframe_to_excel(
         [
             {"indicador": key, "valor": str(value)}
             for key, value in diagnostics.items()
-            if key not in {"feature_coverage", "risk_reasons"}
+            if key not in {"feature_coge", "risk_reasons"}
         ]
     )
 
@@ -1576,35 +1575,41 @@ def dataframe_to_excel(
     return output.getvalue()
 
 
-HEADER_IMAGE = Path(__file__).resolve().parent / "assets" / "vera_header.png"
-header_b64 = base64.b64encode(HEADER_IMAGE.read_bytes()).decode("utf-8")
-
-st.markdown(
-    f"""
-    <div class="hero">
-        <span class="badge">VERA · {APP_EDITION}</span>
-
-        <img
-            src="data:image/png;base64,{header_b64}"
-            alt="VERA — Valor Estimado por Referências Amostrais"
-            style="
-                display: block;
-                width: 100%;
-                max-width: 1050px;
-                height: auto;
-                margin: 0.8rem auto 0.4rem auto;
-            "
-        >
-
-        <p>
-            Envie uma planilha SIRI, informe as características do imóvel e
-            obtenha uma estimativa com tratamento automático de ofertas,
-            duplicidades, valores extremos e extrapolação.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
+HEADER_IMAGE = (
+    Path(__file__).resolve().parent
+    / "assets"
+    / "vera_header.png"
 )
+
+header_b64 = base64.b64encode(
+    HEADER_IMAGE.read_bytes()
+).decode("utf-8")
+
+hero_html = f"""
+<div class="hero">
+<span class="badge">VERA · {APP_EDITION}</span>
+
+<img
+src="data:image/png;base64,{header_b64}"
+alt="VERA — Valor Estimado por Referências Amostrais"
+style="
+display:block;
+width:100%;
+max-width:1050px;
+height:auto;
+margin:0.8rem auto 0.4rem auto;
+"
+/>
+
+<p>
+Envie uma planilha SIRI, informe as características do imóvel e
+obtenha uma estimativa com tratamento automático de ofertas,
+duplicidades, valores extremos e extrapolação.
+</p>
+</div>
+"""
+
+st.html(hero_html)
 
 step_header(1, "Carregue a planilha")
 
