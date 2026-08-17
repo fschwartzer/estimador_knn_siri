@@ -1591,9 +1591,7 @@ margin:0.8rem auto 0.4rem auto;
 />
 
 <p>
-Envie uma planilha SIRI, informe as características do imóvel e
-obtenha uma estimativa com tratamento automático de ofertas,
-duplicidades, valores extremos e extrapolação.
+Envie uma planilha SIRI, informe as características do imóvel e obtenha uma estimativa com tratamento automático de ofertas, duplicidades, valores extremos e extrapolação.
 </p>
 </div>
 """
