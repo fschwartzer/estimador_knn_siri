@@ -2744,9 +2744,39 @@ def estimate_knn(
     epsilon = 1e-9
     for candidate_k in range(min_available, max_available + 1):
         idx = order[:candidate_k]
-        raw = 1.0 / np.power(distances[idx] + epsilon, distance_power)
+        
+        # Peso original do KNN
+        raw = 1.0 / np.power(
+            distances[idx] + epsilon,
+            distance_power
+        )
+        
+        # Distância geográfica em metros
+        geo_m = geo_dist[idx] * 1000.0
+        
+        # Fator adicional para provável mesmo edifício
+        building_factor = np.ones(candidate_k, dtype=float)
+        
+        # Até 30 m: bônus integral
+        same_building = geo_m <= 30.0
+        building_factor[same_building] = 2.0
+        
+        # Entre 30 e 50 m: bônus decrescente
+        transition = (geo_m > 30.0) & (geo_m <= 50.0)
+        
+        building_factor[transition] = (
+            1.0
+            + (50.0 - geo_m[transition])
+            / (50.0 - 30.0)
+        )
+        
+        # Aplica o bônus antes da normalização
+        raw = raw * building_factor
+        
+        # Mantém o limite individual existente
         weights, effective_cap = _cap_and_normalize_weights(
-            raw, max_individual_weight
+            raw,
+            max_individual_weight
         )
         effective_n = float(1.0 / np.sum(np.square(weights)))
         selected_k = candidate_k
