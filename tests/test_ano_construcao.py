@@ -79,7 +79,6 @@ class ConstructionYearFeatureTests(unittest.TestCase):
 
     def test_invalid_target_year_is_rejected(self) -> None:
         for invalid_year in (
-            None,
             core.MIN_CONSTRUCTION_YEAR - 1,
             core.MAX_CONSTRUCTION_YEAR + 1,
             2000.5,
@@ -212,6 +211,67 @@ class ConstructionYearFeatureTests(unittest.TestCase):
             result.local_excluded_data["_etapa_controle"].tolist(),
         )
 
-
+    def test_missing_target_year_is_allowed(self) -> None:
+        target = {
+            "area_construida": 120.0,
+            "area_privativa": None,
+            "siat_area_total_lote": None,
+            "testada": None,
+            "ano_construcao": None,
+            "latitude": -30.03,
+            "longitude": -51.23,
+        }
+    
+        features, territorial = core._resolve_features(
+            self.mapping,
+            target,
+            territorial=False,
+        )
+    
+        self.assertFalse(territorial)
+        self.assertEqual(
+            features,
+            [
+                ("area_construida", "area_construida"),
+            ],
+        )
+    def test_built_property_without_year_column_is_allowed(self) -> None:
+        mapping = core.ColumnMapping(
+            tipo_informacao="tipo",
+            finalidade_oferta="finalidade",
+            valor="valor",
+            area_construida="area_construida",
+            area_privativa="area_privativa",
+            latitude="latitude",
+            longitude="longitude",
+            siat_area_total_lote="area_lote",
+            testada="testada",
+            ano_construcao=None,
+        )
+    
+        target = {
+            "area_construida": 120.0,
+            "area_privativa": None,
+            "siat_area_total_lote": None,
+            "testada": None,
+            "ano_construcao": None,
+            "latitude": -30.03,
+            "longitude": -51.23,
+        }
+    
+        features, territorial = core._resolve_features(
+            mapping,
+            target,
+            territorial=False,
+        )
+    
+        self.assertFalse(territorial)
+        self.assertEqual(
+            features,
+            [
+                ("area_construida", "area_construida"),
+            ],
+        )
+    
 if __name__ == "__main__":
     unittest.main()
