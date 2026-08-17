@@ -117,6 +117,7 @@ FINALIDADES_CRAWLER_CANONICAS = (
 FINALIDADE_CRAWLER_COLUMN_CANDIDATES = (
     "finalidade_crawler_normalizada",
     "finalidade_crawler",
+    "finalidade_oferta",
     "crawler_finalidade",
     "crawler_finalidade_pesquisa",
     "finalidade_pesquisa_crawler",
