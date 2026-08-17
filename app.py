@@ -1579,7 +1579,7 @@ hero_html = f"""
 <span class="badge">VERA · {APP_EDITION}</span>
 
 <img
-src="/app/static/vera_header.png"
+src="app/static/vera_header.png"
 alt="VERA — Valor Estimado por Referências Amostrais"
 style="
 display:block;
