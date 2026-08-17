@@ -1595,7 +1595,7 @@ alt="VERA — Valor Estimado por Referências Amostrais"
 style="
 display:block;
 width:100%;
-max-width:1050px;
+max-width:945px;
 height:auto;
 margin:0.8rem auto 0.4rem auto;
 "
