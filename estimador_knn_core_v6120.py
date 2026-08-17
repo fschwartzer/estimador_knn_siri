@@ -29,7 +29,7 @@ CALIBRATED_GLOBAL_PARAMETERS: dict[str, float | int | str] = {
     "min_effective_neighbors": 11.0,
     "similarity_weight": 0.45,
     "location_weight": 0.55,
-    "max_individual_weight": 0.25,
+    "max_individual_weight": 0.30,
     "distance_power": 0.35,
     "robust_mad_threshold": 1.25,
 }
