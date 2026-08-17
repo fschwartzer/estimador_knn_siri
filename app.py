@@ -1578,7 +1578,8 @@ st.markdown(
     f"""
     <div class="hero">
         <span class="badge">{APP_NAME} · {APP_EDITION}</span>
-        <h1>Estimativa imobiliária por comparáveis, em poucos passos.</h1>
+        <h1>VERA</h1>
+        <h2>Valor Estimado por Referências Amostrais</h2>
         <p>
             Envie uma planilha SIRI, informe as características do imóvel e
             obtenha uma estimativa com tratamento automático de ofertas,
