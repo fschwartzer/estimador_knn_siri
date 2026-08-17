@@ -11,6 +11,8 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
+import base64
+from pathlib import Path
 
 APP_NAME = "estimador_knn_siri"
 APP_EDITION = "LITE 1.17.0"
@@ -1574,12 +1576,26 @@ def dataframe_to_excel(
     return output.getvalue()
 
 
+HEADER_IMAGE = Path(__file__).resolve().parent / "assets" / "vera_header.png"
+header_b64 = base64.b64encode(HEADER_IMAGE.read_bytes()).decode("utf-8")
+
 st.markdown(
     f"""
     <div class="hero">
-        <span class="badge">{APP_NAME} · {APP_EDITION}</span>
-        <h1>VERA</h1>
-        <h2>Valor Estimado por Referências Amostrais</h2>
+        <span class="badge">VERA · {APP_EDITION}</span>
+
+        <img
+            src="data:image/png;base64,{header_b64}"
+            alt="VERA — Valor Estimado por Referências Amostrais"
+            style="
+                display: block;
+                width: 100%;
+                max-width: 1050px;
+                height: auto;
+                margin: 0.8rem auto 0.4rem auto;
+            "
+        >
+
         <p>
             Envie uma planilha SIRI, informe as características do imóvel e
             obtenha uma estimativa com tratamento automático de ofertas,
