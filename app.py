@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-import base64
 from pathlib import Path
 
 APP_NAME = "estimador_knn_siri"
@@ -1575,22 +1574,12 @@ def dataframe_to_excel(
     return output.getvalue()
 
 
-HEADER_IMAGE = (
-    Path(__file__).resolve().parent
-    / "assets"
-    / "vera_header.png"
-)
-
-header_b64 = base64.b64encode(
-    HEADER_IMAGE.read_bytes()
-).decode("utf-8")
-
 hero_html = f"""
 <div class="hero">
 <span class="badge">VERA · {APP_EDITION}</span>
 
 <img
-src="data:image/png;base64,{header_b64}"
+src="/app/static/vera_header.png"
 alt="VERA — Valor Estimado por Referências Amostrais"
 style="
 display:block;
