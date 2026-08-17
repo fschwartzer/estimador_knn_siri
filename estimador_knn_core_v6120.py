@@ -1844,18 +1844,26 @@ def _resolve_features(
             ]
         )
     else:
-        if not mapping.ano_construcao:
-            raise ValueError(
-                "Para imóvel predial, a planilha deve conter a coluna "
-                "siat_ano com o ano da construção."
-            )
         construction_year = target.get("ano_construcao")
-        if not is_valid_construction_year(construction_year):
-            raise ValueError(
-                "Informe um ano da construção inteiro entre "
-                f"{MIN_CONSTRUCTION_YEAR} e {MAX_CONSTRUCTION_YEAR}."
+    
+        # O ano é uma característica opcional.
+        # Só entra no KNN quando existe na base e foi informado para o avaliando.
+        if construction_year is not None:
+            if not mapping.ano_construcao:
+                raise ValueError(
+                    "Foi informado o ano da construção para o avaliando, "
+                    "mas a planilha não possui uma coluna de ano da construção."
+                )
+    
+            if not is_valid_construction_year(construction_year):
+                raise ValueError(
+                    "Quando informado, o ano da construção deve ser um inteiro entre "
+                    f"{MIN_CONSTRUCTION_YEAR} e {MAX_CONSTRUCTION_YEAR}."
+                )
+    
+            pairs.append(
+                ("ano_construcao", mapping.ano_construcao)
             )
-        pairs.append(("ano_construcao", mapping.ano_construcao))
 
     active: list[tuple[str, str]] = []
     for key, column in pairs:
@@ -2671,16 +2679,15 @@ def estimate_knn(
     active_features, effective_territorial = _resolve_features(
         mapping, target, territorial
     )
+    
+    uses_construction_year = any(
+        key == "ano_construcao"
+        for key, _ in active_features
+    )
+    
     invalid_construction_years = preparation.data.iloc[0:0].copy()
     construction_year_excluded_count = 0
-    if (
-        not effective_territorial
-        and mapping.ano_construcao
-        and mapping.ano_construcao in preparation.data.columns
-    ):
-        year_mask = valid_construction_year_mask(
-            preparation.data[mapping.ano_construcao]
-        )
+    if uses_construction_year:
         invalid_construction_years = preparation.data.loc[~year_mask].copy()
         construction_year_excluded_count = int(len(invalid_construction_years))
         if construction_year_excluded_count:
@@ -2864,10 +2871,15 @@ def estimate_knn(
         "n_candidates_after_physical_validation": (
             candidates_after_physical_validation
         ),
-        "construction_year_column": mapping.ano_construcao or "",
+        "construction_year_used": bool(uses_construction_year),
+        "construction_year_column": (
+            mapping.ano_construcao
+            if uses_construction_year
+            else ""
+        ),
         "construction_year_target": (
             float(target["ano_construcao"])
-            if not effective_territorial
+            if uses_construction_year
             else np.nan
         ),
         "construction_year_invalid_excluded": (
