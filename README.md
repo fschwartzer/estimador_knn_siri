@@ -1,4 +1,6 @@
-# Estimador KNN SIRI
+![Logotipo VERA](./static/vera_header.png)
+# VERA
+## Valor Estimado por Referências Amostrais
 
 Aplicativo web para estimar o valor de imóveis a partir de transações e
 ofertas comparáveis. Combina similaridade física, proximidade geográfica e
@@ -16,7 +18,7 @@ para planilhas do SIRI.
 
 ## O que o aplicativo faz
 
-O Estimador KNN SIRI recebe uma planilha de dados imobiliários e encontra os
+A VERA recebe uma planilha de dados imobiliários e encontra os
 imóveis mais compatíveis com o bem avaliando. O processo:
 
 1. reconhece e normaliza o schema da planilha;
