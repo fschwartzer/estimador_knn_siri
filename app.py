@@ -12,8 +12,14 @@ import streamlit as st
 import plotly.graph_objects as go
 from pathlib import Path
 
+from geocodificador_porto_alegre import (
+    geocode_porto_alegre_address,
+    load_street_axis_index,
+    parse_street_and_number,
+)
+
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.17.0"
+APP_EDITION = "LITE 1.18.0"
 CORE_VERSION = "6.12.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -34,7 +40,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.17.0-20260814"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.18.0-20260820"
 CORE_MODULE_FILE = "estimador_knn_core_v6120.py"
 SCHEMA_MODULE_FILE = "estimador_knn_schema_v6120.py"
 
@@ -122,6 +128,7 @@ _required_schema = {
     "DERIVED_AREA_PRIVATIVA",
     "DERIVED_REGIME_AREA",
     "DERIVED_TESTADA",
+    "DERIVED_TIPO_INFORMACAO",
     "DERIVED_FINALIDADE_CRAWLER_INFORMADA",
     "DERIVED_FINALIDADE_SIAT_NORMALIZADA",
     "DERIVED_FINALIDADE_TIPO_CRAWLER_NORMALIZADA",
@@ -200,6 +207,7 @@ DERIVED_AREA_LOTE = _schema.DERIVED_AREA_LOTE
 DERIVED_AREA_PRIVATIVA = _schema.DERIVED_AREA_PRIVATIVA
 DERIVED_REGIME_AREA = _schema.DERIVED_REGIME_AREA
 DERIVED_TESTADA = _schema.DERIVED_TESTADA
+DERIVED_TIPO_INFORMACAO = _schema.DERIVED_TIPO_INFORMACAO
 DERIVED_FINALIDADE_CRAWLER_INFORMADA = (
     _schema.DERIVED_FINALIDADE_CRAWLER_INFORMADA
 )
@@ -481,7 +489,12 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
 
     tipo = choose_existing(
         columns,
-        ["tipo_informacao", "tipo_informação"],
+        [
+            "tipo_informacao",
+            "tipo_informação",
+            "tipo de informação",
+            DERIVED_TIPO_INFORMACAO,
+        ],
     )
     finalidade = choose_existing(
         columns,
@@ -503,12 +516,32 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
             "preço",
             "valor_unitario",
             "valor_unitário",
+            "preco_venda",
+            "preço de venda",
+            "preco_anuncio",
+            "valor_anuncio",
+            "price",
+            "price_brl",
         ],
     )
-    latitude = choose_existing(columns, ["siat_latitude", "latitude", "lat"])
+    latitude = choose_existing(
+        columns,
+        [
+            "__latitude_geocodificada",
+            "siat_latitude",
+            "latitude",
+            "lat",
+        ],
+    )
     longitude = choose_existing(
         columns,
-        ["siat_longitude", "longitude", "lon", "lng"],
+        [
+            "__longitude_geocodificada",
+            "siat_longitude",
+            "longitude",
+            "lon",
+            "lng",
+        ],
     )
 
     area_lote = (
@@ -521,6 +554,14 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
                 "siat_area_terreno",
                 "crawler_area_terreno",
                 "area_total_lote",
+                "area_terreno",
+                "area_do_terreno",
+                "area_lote",
+                "area_do_lote",
+                "terreno_m2",
+                "lote_m2",
+                "land_area",
+                "lot_area",
             ],
         )
     )
@@ -534,6 +575,14 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
                 "crawler_area_construida",
                 "siat_area_construida",
                 "itbacotot",
+                "area_total_construida",
+                "area_edificada",
+                "area_util",
+                "area_do_imovel",
+                "area_imovel",
+                "built_area",
+                "property_area",
+                "area",
             ],
         )
     )
@@ -546,6 +595,11 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
                 "area_privativa",
                 "crawler_area_privativa",
                 "itbacopriv",
+                "area_util",
+                "area_do_imovel",
+                "area_imovel",
+                "property_area",
+                "area",
             ],
         )
     )
@@ -576,8 +630,6 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
         "tipo de informação": tipo,
         "finalidade": finalidade,
         "valor": valor,
-        "latitude": latitude,
-        "longitude": longitude,
     }
     missing = [label for label, column in required.items() if not column]
     if missing:
@@ -610,6 +662,7 @@ def usable_prepared_count(
     mapping: ColumnMapping,
     territorial: bool,
     use_construction_year: bool = False,
+    use_land_area: bool = False,
 ) -> int:
     """
     Conta candidatos utilizáveis pelo regime.
@@ -617,8 +670,22 @@ def usable_prepared_count(
     O ano da construção só restringe a amostra quando estiver
     efetivamente sendo utilizado como característica do KNN.
     """
+    valid = pd.Series(True, index=preparation.data.index)
+
+    if use_land_area:
+        if (
+            not mapping.siat_area_total_lote
+            or mapping.siat_area_total_lote not in preparation.data.columns
+        ):
+            return 0
+        land_area = pd.to_numeric(
+            preparation.data[mapping.siat_area_total_lote],
+            errors="coerce",
+        )
+        valid &= np.isfinite(land_area) & land_area.gt(0)
+
     if territorial or not use_construction_year:
-        return int(len(preparation.data))
+        return int(valid.sum())
 
     if (
         not mapping.ano_construcao
@@ -626,11 +693,10 @@ def usable_prepared_count(
     ):
         return 0
 
-    return int(
-        valid_construction_year_mask(
-            preparation.data[mapping.ano_construcao]
-        ).sum()
+    valid &= valid_construction_year_mask(
+        preparation.data[mapping.ano_construcao]
     )
+    return int(valid.sum())
 
 
 def classify_discount_alert(
@@ -940,6 +1006,296 @@ def coordinate_to_numeric(series: pd.Series) -> pd.Series:
         .str.replace(",", ".", regex=False)
     )
     return pd.to_numeric(cleaned, errors="coerce")
+
+
+GEOCODED_LATITUDE = "__latitude_geocodificada"
+GEOCODED_LONGITUDE = "__longitude_geocodificada"
+GEOCODE_QUERY = "__endereco_geocodificacao"
+GEOCODE_METHOD = "__metodo_geocodificacao"
+GEOCODE_MATCHED_STREET = "__logradouro_correspondido"
+GEOCODE_SIMILARITY_SCORE = "__score_similaridade_logradouro"
+GEOCODE_CDLOG = "__cdlog_encontrado"
+GEOCODE_FAILURE_REASON = "__motivo_falha_geocodificacao"
+
+
+def detect_address_columns(df: pd.DataFrame) -> dict[str, str | None]:
+    """Reconhece endereço completo ou seus componentes mais usuais."""
+    columns = [str(column) for column in df.columns]
+    return {
+        "full": choose_existing(
+            columns,
+            [
+                "endereco_completo",
+                "endereço completo",
+                "endereco",
+                "endereço",
+                "address",
+                "localizacao",
+                "localização",
+            ],
+        ),
+        "street": choose_existing(
+            columns,
+            [
+                "logradouro",
+                "rua",
+                "avenida",
+                "street",
+                "endereco_logradouro",
+            ],
+        ),
+        "number": choose_existing(
+            columns,
+            ["numero", "número", "numero_endereco", "number"],
+        ),
+        "neighborhood": choose_existing(
+            columns,
+            ["bairro", "neighborhood", "district"],
+        ),
+        "city": choose_existing(
+            columns,
+            ["cidade", "municipio", "município", "city"],
+        ),
+        "state": choose_existing(
+            columns,
+            ["uf", "estado", "state"],
+        ),
+        "postal_code": choose_existing(
+            columns,
+            ["cep", "codigo_postal", "código postal", "postal_code"],
+        ),
+    }
+
+
+def has_usable_address_columns(mapping: dict[str, str | None]) -> bool:
+    return bool(mapping.get("full") or mapping.get("street"))
+
+
+def build_address_queries(
+    df: pd.DataFrame,
+    address_mapping: dict[str, str | None],
+    locality_context: str = "",
+) -> pd.Series:
+    """Monta consultas de geocodificação sem alterar a planilha original."""
+    full_column = address_mapping.get("full")
+    if full_column:
+        queries = df[full_column].astype("string").fillna("").str.strip()
+        for key in ("number", "neighborhood", "city", "state", "postal_code"):
+            column = address_mapping.get(key)
+            if not column or column == full_column:
+                continue
+            values = df[column].astype("string").fillna("").str.strip()
+            combined: list[str] = []
+            for query, value in zip(queries, values):
+                if not value:
+                    combined.append(query)
+                    continue
+                if key == "number" and parse_street_and_number(query)[1] is not None:
+                    combined.append(query)
+                    continue
+                if value.casefold() in query.casefold():
+                    combined.append(query)
+                    continue
+                combined.append(", ".join(part for part in (query, value) if part))
+            queries = pd.Series(combined, index=df.index, dtype="string")
+    else:
+        queries = pd.Series("", index=df.index, dtype="string")
+        for key in (
+            "street",
+            "number",
+            "neighborhood",
+            "city",
+            "state",
+            "postal_code",
+        ):
+            column = address_mapping.get(key)
+            if not column:
+                continue
+            values = df[column].astype("string").fillna("").str.strip()
+            queries = pd.Series(
+                [
+                    ", ".join(part for part in (left, right) if part)
+                    for left, right in zip(queries, values)
+                ],
+                index=df.index,
+                dtype="string",
+            )
+
+    context = str(locality_context or "").strip()
+    if context:
+        queries = queries.map(
+            lambda value: (
+                f"{value}, {context}" if value and context.casefold() not in value.casefold()
+                else value
+            )
+        )
+    return queries.str.strip(" ,")
+
+
+@st.cache_resource(show_spinner=False)
+def cached_street_axis_index():
+    return load_street_axis_index()
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24 * 30)
+def geocode_queries(
+    queries: tuple[str, ...],
+) -> dict[str, dict[str, object]]:
+    """Usa primeiro o eixo de Porto Alegre e depois o fallback Nominatim."""
+    from geopy.extra.rate_limiter import RateLimiter
+    from geopy.geocoders import Nominatim
+
+    try:
+        street_axis_index = cached_street_axis_index()
+    except Exception:
+        street_axis_index = None
+
+    geocoder = Nominatim(
+        user_agent="vera-estimador-knn-siri/1.18",
+        timeout=10,
+    )
+    geocode = RateLimiter(
+        geocoder.geocode,
+        min_delay_seconds=1.05,
+        max_retries=1,
+        error_wait_seconds=2.0,
+        swallow_exceptions=True,
+    )
+    result: dict[str, dict[str, object]] = {}
+    for query in queries:
+        street, number = parse_street_and_number(query)
+        local_result = None
+        if street_axis_index is not None and number is not None:
+            local_result = geocode_porto_alegre_address(
+                street_axis_index,
+                street,
+                number,
+            )
+        if local_result is not None and local_result.latitude is not None:
+            result[query] = {
+                "latitude": local_result.latitude,
+                "longitude": local_result.longitude,
+                "method": local_result.method,
+                "matched_street": local_result.matched_street,
+                "similarity_score": local_result.similarity_score,
+                "cdlog": local_result.cdlog,
+                "failure_reason": "",
+            }
+            continue
+
+        location = geocode(query, exactly_one=True, language="pt-BR")
+        if location is None:
+            result[query] = {
+                "latitude": None,
+                "longitude": None,
+                "method": "não localizado",
+                "matched_street": (
+                    local_result.matched_street if local_result else ""
+                ),
+                "similarity_score": (
+                    local_result.similarity_score if local_result else 0.0
+                ),
+                "cdlog": local_result.cdlog if local_result else None,
+                "failure_reason": (
+                    local_result.failure_reason
+                    if local_result
+                    else "Endereço não localizado"
+                ),
+            }
+        else:
+            result[query] = {
+                "latitude": float(location.latitude),
+                "longitude": float(location.longitude),
+                "method": "nominatim",
+                "matched_street": (
+                    local_result.matched_street if local_result else ""
+                ),
+                "similarity_score": (
+                    local_result.similarity_score if local_result else 0.0
+                ),
+                "cdlog": local_result.cdlog if local_result else None,
+                "failure_reason": "",
+            }
+    return result
+
+
+def add_geocoded_coordinates(
+    df: pd.DataFrame,
+    queries: pd.Series,
+    maximum_unique_queries: int,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Acrescenta coordenadas derivadas e métricas de cobertura."""
+    data = df.copy()
+    normalized_queries = queries.astype("string").fillna("").str.strip()
+    unique_queries = list(dict.fromkeys(q for q in normalized_queries if q))
+    selected_queries = tuple(unique_queries[: max(int(maximum_unique_queries), 1)])
+    coordinates = geocode_queries(selected_queries)
+
+    data[GEOCODE_QUERY] = normalized_queries
+    def geocode_value(query: str, field: str, default: object = "") -> object:
+        return coordinates.get(query, {}).get(field, default)
+
+    data[GEOCODED_LATITUDE] = normalized_queries.map(
+        lambda query: geocode_value(query, "latitude", None)
+    )
+    data[GEOCODED_LONGITUDE] = normalized_queries.map(
+        lambda query: geocode_value(query, "longitude", None)
+    )
+    data[GEOCODE_METHOD] = normalized_queries.map(
+        lambda query: geocode_value(query, "method")
+    )
+    data[GEOCODE_MATCHED_STREET] = normalized_queries.map(
+        lambda query: geocode_value(query, "matched_street")
+    )
+    data[GEOCODE_SIMILARITY_SCORE] = normalized_queries.map(
+        lambda query: geocode_value(query, "similarity_score", 0.0)
+    )
+    data[GEOCODE_CDLOG] = normalized_queries.map(
+        lambda query: geocode_value(query, "cdlog", None)
+    )
+    data[GEOCODE_FAILURE_REASON] = normalized_queries.map(
+        lambda query: geocode_value(query, "failure_reason")
+    )
+    geocoded_count = int(
+        (
+            data[GEOCODED_LATITUDE].notna()
+            & data[GEOCODED_LONGITUDE].notna()
+        ).sum()
+    )
+    method_counts = data[GEOCODE_METHOD].value_counts().to_dict()
+    return data, {
+        "rows": int(len(data)),
+        "unique_queries": int(len(unique_queries)),
+        "attempted_queries": int(len(selected_queries)),
+        "geocoded_rows": geocoded_count,
+        "axis_rows": int(method_counts.get("eixo_poa", 0)),
+        "nominatim_rows": int(method_counts.get("nominatim", 0)),
+        "failed_rows": int(method_counts.get("não localizado", 0)),
+        "not_attempted_queries": int(
+            max(len(unique_queries) - len(selected_queries), 0)
+        ),
+    }
+
+
+def valid_coordinate_count(
+    df: pd.DataFrame,
+    latitude_column: str | None,
+    longitude_column: str | None,
+) -> int:
+    if not latitude_column or not longitude_column:
+        return 0
+    latitude = coordinate_to_numeric(
+        first_named_series(df, latitude_column)
+    )
+    longitude = coordinate_to_numeric(
+        first_named_series(df, longitude_column)
+    )
+    return int(
+        (
+            latitude.between(-90, 90)
+            & longitude.between(-180, 180)
+        ).sum()
+    )
 
 
 def calculate_map_zoom(points: pd.DataFrame) -> float:
@@ -1598,7 +1954,7 @@ margin:0.8rem auto 0.4rem auto;
 />
 
 <p>
-Envie uma planilha SIRI, informe as características do imóvel e obtenha uma estimativa com tratamento automático de ofertas, duplicidades, valores extremos e extrapolação.
+Envie uma planilha do SIRI ou uma base de anúncios, informe as características do imóvel e obtenha uma estimativa com tratamento automático de ofertas, duplicidades, valores extremos e extrapolação.
 </p>
 </div>
 """
@@ -1618,8 +1974,9 @@ if uploaded is None:
     st.markdown(
         """
         <div class="helper">
-            Use uma planilha exportada do SIRI contendo tipo da informação,
-            finalidade, valor, coordenadas e características de área.
+            Use uma planilha exportada do SIRI ou uma base de anúncios com
+            finalidade, valor e características de área. Coordenadas são
+            opcionais quando houver endereço ou quando a localização for ignorada.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1666,10 +2023,191 @@ if mapping is None:
     )
     st.write("Campos não identificados: " + ", ".join(missing_fields) + ".")
     st.caption(
-        "Esta edição foi preparada para a estrutura SIRI e não possui "
-        "mapeamento manual de colunas."
+        "Use cabeçalhos descritivos para finalidade, valor e área. Exemplos: "
+        "Tipo, Preço (R$), Área construída (m²) e Área do terreno (m²)."
     )
     st.stop()
+
+address_mapping = detect_address_columns(original_df)
+sample_coordinate_count = valid_coordinate_count(
+    df,
+    mapping.latitude,
+    mapping.longitude,
+)
+sample_geocoding_diagnostics: dict[str, int] = {}
+geocoding_context = ""
+
+if sample_coordinate_count < 2:
+    st.warning(
+        "A planilha não possui ao menos dois registros com coordenadas "
+        "válidas. A VERA pode geocodificar endereços reconhecidos ou executar "
+        "o KNN apenas com as características físicas."
+    )
+    location_options = ["Ignorar localização"]
+    if has_usable_address_columns(address_mapping):
+        location_options.insert(0, "Geocodificar endereços")
+
+    sample_location_mode = st.radio(
+        "Localização da amostra",
+        location_options,
+        horizontal=True,
+        help=(
+            "Em Porto Alegre, a VERA tenta primeiro a correspondência do "
+            "logradouro e a interpolação do número no eixo viário oficial. "
+            "Depois usa geocodificação online como fallback."
+        ),
+    )
+
+    if sample_location_mode == "Geocodificar endereços":
+        locality_context = st.text_input(
+            "Complemento geográfico dos endereços (opcional)",
+            placeholder="Ex.: Porto Alegre, RS, Brasil",
+            help=(
+                "Útil quando a planilha contém somente logradouro e número. "
+                "Não repita cidade ou estado se eles já constarem nas colunas."
+            ),
+        )
+        geocoding_context = locality_context
+        address_queries = build_address_queries(
+            original_df,
+            address_mapping,
+            locality_context,
+        )
+        unique_address_count = int(
+            address_queries[address_queries.ne("")].nunique()
+        )
+        maximum_queries = st.number_input(
+            "Máximo de endereços únicos a geocodificar",
+            min_value=1,
+            max_value=max(unique_address_count, 1),
+            value=min(max(unique_address_count, 1), 100),
+            step=1,
+            help=(
+                "A interpolação no eixo viário de Porto Alegre é local e rápida. "
+                "Somente os fallbacks online respeitam intervalo entre "
+                "requisições. Os resultados ficam em cache por 30 dias."
+            ),
+        )
+        if unique_address_count:
+            with st.spinner(
+                "Geocodificando endereços. Em bases maiores, esta etapa pode demorar..."
+            ):
+                geocoded_df, sample_geocoding_diagnostics = (
+                    add_geocoded_coordinates(
+                        original_df,
+                        address_queries,
+                        int(maximum_queries),
+                    )
+                )
+            if mapping.latitude and mapping.longitude:
+                original_latitude = coordinate_to_numeric(
+                    first_named_series(df, mapping.latitude)
+                )
+                original_longitude = coordinate_to_numeric(
+                    first_named_series(df, mapping.longitude)
+                )
+                valid_original_location = (
+                    original_latitude.between(-90, 90)
+                    & original_longitude.between(-180, 180)
+                )
+                geocoded_df.loc[
+                    valid_original_location,
+                    GEOCODED_LATITUDE,
+                ] = original_latitude.loc[valid_original_location]
+                geocoded_df.loc[
+                    valid_original_location,
+                    GEOCODED_LONGITUDE,
+                ] = original_longitude.loc[valid_original_location]
+                geocoded_df.loc[
+                    valid_original_location,
+                    GEOCODE_METHOD,
+                ] = "coordenadas da planilha"
+                sample_geocoding_diagnostics["geocoded_rows"] = int(
+                    (
+                        geocoded_df[GEOCODED_LATITUDE].notna()
+                        & geocoded_df[GEOCODED_LONGITUDE].notna()
+                    ).sum()
+                )
+            final_method_counts = (
+                geocoded_df[GEOCODE_METHOD].value_counts().to_dict()
+            )
+            sample_geocoding_diagnostics.update(
+                {
+                    "axis_rows": int(final_method_counts.get("eixo_poa", 0)),
+                    "nominatim_rows": int(
+                        final_method_counts.get("nominatim", 0)
+                    ),
+                    "original_coordinate_rows": int(
+                        final_method_counts.get(
+                            "coordenadas da planilha",
+                            0,
+                        )
+                    ),
+                    "failed_rows": int(
+                        final_method_counts.get("não localizado", 0)
+                    ),
+                }
+            )
+            df, schema_info = enrich_known_schemas(geocoded_df)
+            mapping, missing_fields = build_mapping(df)
+            sample_coordinate_count = valid_coordinate_count(
+                df,
+                mapping.latitude,
+                mapping.longitude,
+            )
+            st.caption(
+                "Geocodificação: "
+                f"**{sample_geocoding_diagnostics['geocoded_rows']}** de "
+                f"**{sample_geocoding_diagnostics['rows']}** registros com "
+                "coordenadas obtidas — "
+                f"**{sample_geocoding_diagnostics['axis_rows']}** pelo eixo "
+                "viário de Porto Alegre e "
+                f"**{sample_geocoding_diagnostics['nominatim_rows']}** pelo "
+                "fallback online e "
+                f"**{sample_geocoding_diagnostics.get('original_coordinate_rows', 0)}** "
+                "já existentes na planilha."
+            )
+            if sample_geocoding_diagnostics["not_attempted_queries"]:
+                st.warning(
+                    "O limite informado deixou "
+                    f"{sample_geocoding_diagnostics['not_attempted_queries']} "
+                    "endereço(s) único(s) sem tentativa de geocodificação."
+                )
+            failed_geocoding = geocoded_df.loc[
+                geocoded_df[GEOCODED_LATITUDE].isna()
+                | geocoded_df[GEOCODED_LONGITUDE].isna(),
+                [
+                    GEOCODE_QUERY,
+                    GEOCODE_MATCHED_STREET,
+                    GEOCODE_SIMILARITY_SCORE,
+                    GEOCODE_CDLOG,
+                    GEOCODE_FAILURE_REASON,
+                ],
+            ].copy()
+            if not failed_geocoding.empty:
+                with st.expander(
+                    "Endereços não geocodificados",
+                    expanded=False,
+                ):
+                    st.dataframe(
+                        failed_geocoding,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+        else:
+            st.warning("Nenhum endereço não vazio foi encontrado na planilha.")
+
+    if sample_coordinate_count < 2:
+        st.info(
+            "A localização será ignorada: o peso físico será renormalizado para "
+            "100% e nenhum dado será descartado apenas por falta de coordenadas."
+        )
+else:
+    sample_location_mode = "Coordenadas da planilha"
+    st.caption(
+        f"Coordenadas válidas reconhecidas em **{sample_coordinate_count}** "
+        "registro(s)."
+    )
 
 if schema_info.siri_detected:
     st.success(
@@ -1908,6 +2446,7 @@ with st.form("lite_property_form"):
             target_area_privativa = 0.0
             target_area_construida = 0.0
             target_ano_construcao = None
+            use_land_area = True
         else:
             available_area_modes = ["Automática"]
             if mapping.area_privativa:
@@ -1985,28 +2524,84 @@ with st.form("lite_property_form"):
                     "Ano da construção não disponível nesta planilha. "
                     "Essa característica não será utilizada no KNN."
                 )
-            target_area_lote = 0.0
+            if mapping.siat_area_total_lote:
+                default_use_land = normalize_text(selected_purpose) in {
+                    "casa / residencia",
+                    "galpao / deposito",
+                }
+                use_land_area = st.checkbox(
+                    "Imóvel térreo: considerar também a área do terreno",
+                    value=default_use_land,
+                    help=(
+                        "Ative quando o lote compõe parcela relevante do valor, "
+                        "como em casas, lojas térreas e galpões. A área do terreno "
+                        "entra como característica física adicional, mas não muda "
+                        "o denominador usado para calcular o valor unitário."
+                    ),
+                )
+                target_area_lote = (
+                    st.number_input(
+                        "Área do terreno (m²)",
+                        min_value=0.0,
+                        value=0.0,
+                        step=10.0,
+                    )
+                    if use_land_area
+                    else 0.0
+                )
+            else:
+                use_land_area = False
+                target_area_lote = 0.0
+                st.caption(
+                    "Área do terreno não disponível na planilha; essa "
+                    "característica física não poderá ser utilizada."
+                )
             target_testada = 0.0
 
         if territorial:
             requested_area_mode = "Área total do lote"
 
-        c3, c4 = st.columns(2)
-        with c3:
-            target_latitude = st.number_input(
-                "Latitude",
-                min_value=-90.0,
-                max_value=90.0,
-                value=-30.0300000,
-                format="%.7f",
+        if sample_coordinate_count >= 2:
+            target_location_options = ["Endereço", "Coordenadas"]
+            target_location_mode = st.radio(
+                "Localização do imóvel avaliando",
+                target_location_options,
+                horizontal=True,
             )
-        with c4:
-            target_longitude = st.number_input(
-                "Longitude",
-                min_value=-180.0,
-                max_value=180.0,
-                value=-51.2300000,
-                format="%.7f",
+            if target_location_mode == "Coordenadas":
+                c3, c4 = st.columns(2)
+                with c3:
+                    target_latitude = st.number_input(
+                        "Latitude",
+                        min_value=-90.0,
+                        max_value=90.0,
+                        value=-30.0300000,
+                        format="%.7f",
+                    )
+                with c4:
+                    target_longitude = st.number_input(
+                        "Longitude",
+                        min_value=-180.0,
+                        max_value=180.0,
+                        value=-51.2300000,
+                        format="%.7f",
+                    )
+                target_address = ""
+            else:
+                target_address = st.text_input(
+                    "Endereço do imóvel avaliando",
+                    placeholder="Ex.: Av. Borges de Medeiros, 2244, Porto Alegre, RS",
+                )
+                target_latitude = None
+                target_longitude = None
+        else:
+            target_location_mode = "Ignorar localização"
+            target_address = ""
+            target_latitude = None
+            target_longitude = None
+            st.caption(
+                "Localização desativada: a comparação usará somente as "
+                "características físicas disponíveis."
             )
 
         calculate = st.form_submit_button(
@@ -2031,6 +2626,36 @@ if calculate:
             raise ValueError(
                 "Informe a área privativa ou a área total/construída."
             )
+        if not territorial and use_land_area and target_area_lote <= 0:
+            raise ValueError(
+                "Informe a área do terreno ou desative a opção de imóvel térreo."
+            )
+
+        if target_location_mode == "Endereço":
+            target_query = str(target_address or "").strip()
+            if geocoding_context and geocoding_context.casefold() not in target_query.casefold():
+                target_query = f"{target_query}, {geocoding_context}".strip(" ,")
+            if not target_query:
+                raise ValueError("Informe o endereço do imóvel avaliando.")
+            with st.spinner("Geocodificando o imóvel avaliando..."):
+                target_geocode = geocode_queries((target_query,)).get(
+                    target_query,
+                    {},
+                )
+            target_latitude = target_geocode.get("latitude")
+            target_longitude = target_geocode.get("longitude")
+            target_geocode_method = str(
+                target_geocode.get("method", "não localizado")
+            )
+            if target_latitude is None or target_longitude is None:
+                raise ValueError(
+                    "Não foi possível geocodificar o endereço do imóvel avaliando. "
+                    "Revise-o ou informe as coordenadas manualmente."
+                )
+        elif target_location_mode == "Coordenadas":
+            target_geocode_method = "coordenadas informadas"
+        else:
+            target_geocode_method = "localização ignorada"
         use_construction_year = (
             not territorial
             and mapping.ano_construcao is not None
@@ -2186,6 +2811,7 @@ if calculate:
                     mapping,
                     territorial=False,
                     use_construction_year=use_construction_year,
+                    use_land_area=use_land_area,
                 )
                 if AREA_REGIME_PRIVATE in preparation_candidates
                 else 0
@@ -2197,6 +2823,7 @@ if calculate:
                     mapping,
                     territorial=False,
                     use_construction_year=use_construction_year,
+                    use_land_area=use_land_area,
                 )
                 if AREA_REGIME_TOTAL_BUILT in preparation_candidates
                 else 0
@@ -2227,9 +2854,8 @@ if calculate:
         ]
         reference_area_column = selected_area_spec["column"]
 
-        # A área do regime selecionado e, nos imóveis prediais, o ano da
-        # construção compõem a distância física. As duas bases de área não
-        # são exigidas simultaneamente nos comparáveis.
+        # A área do regime selecionado e, quando informados, o ano da
+        # construção e a área do terreno compõem a distância física.
         target = {
             "area_construida": (
                 target_area_construida
@@ -2244,7 +2870,9 @@ if calculate:
                 else None
             ),
             "siat_area_total_lote": (
-                target_area_lote if territorial else None
+                target_area_lote
+                if territorial or use_land_area
+                else None
             ),
             "testada": target_testada if territorial else None,
             "ano_construcao": (
@@ -2291,6 +2919,14 @@ if calculate:
                 ),
                 "area_floor_purpose": (
                     selected_area_spec["floor_purpose"] or ""
+                ),
+                "land_area_used_as_physical_feature": bool(
+                    not territorial and use_land_area
+                ),
+                "land_area_target": (
+                    float(target_area_lote)
+                    if not territorial and use_land_area
+                    else np.nan
                 ),
                 "area_preparation_errors": (
                     " | ".join(
@@ -2366,6 +3002,13 @@ if calculate:
             "area_floor_applied": (
                 selected_area_spec["floor_purpose"] is not None
             ),
+            "land_area_used": bool(not territorial and use_land_area),
+            "sample_location_mode": sample_location_mode,
+            "sample_geocoding_diagnostics": dict(
+                sample_geocoding_diagnostics
+            ),
+            "target_location_mode": target_location_mode,
+            "target_geocode_method": target_geocode_method,
             "area_regime_counts": {
                 "privativa": area_selection["private_count"],
                 "total_construida": (
@@ -2440,6 +3083,27 @@ st.info(
     f"**{area_counts.get('total_construida', 0)}**."
 )
 
+if run.get("land_area_used"):
+    st.info(
+        "Imóvel térreo: a **área do terreno** foi incluída como característica "
+        "física adicional do KNN. O valor unitário continua calculado pela base "
+        f"selecionada ({run['area_regime_label'].lower()})."
+    )
+
+if estimate.diagnostics.get("location_used", False):
+    st.caption(
+        "Localização utilizada no KNN · peso geográfico efetivo: "
+        f"**{estimate.diagnostics['location_weight']:.0%}** · origem do "
+        "avaliando: "
+        f"**{run.get('target_geocode_method', 'não informada')}**."
+    )
+else:
+    st.warning(
+        "A estimativa foi executada sem componente geográfico "
+        f"({estimate.diagnostics.get('location_fallback_reason', 'indisponível')}). "
+        "O peso físico foi renormalizado para 100%."
+    )
+
 construction_year_excluded = int(
     estimate.diagnostics.get(
         "construction_year_invalid_excluded",
@@ -2451,6 +3115,16 @@ if construction_year_excluded:
         f"Foram excluídos **{construction_year_excluded}** candidatos com "
         "ano da construção ausente ou inválido. Esses registros constam "
         "na aba de dados excluídos da exportação."
+    )
+
+location_invalid_excluded = int(
+    estimate.diagnostics.get("location_invalid_excluded", 0)
+)
+if location_invalid_excluded:
+    st.warning(
+        f"Foram excluídos **{location_invalid_excluded}** candidatos sem "
+        "coordenadas válidas porque a localização participou desta estimativa. "
+        "Eles constam na aba de dados excluídos da exportação."
     )
 
 if not run.get("area_floor_compatible", True):
@@ -2549,7 +3223,16 @@ with st.container(border=True):
         "dos quantis pareados, com 20% apenas como freio do resultado empírico."
     )
 
-tabs = st.tabs(["Resumo", "Comparáveis e mapa"])
+tabs = st.tabs(
+    [
+        "Resumo",
+        (
+            "Comparáveis e mapa"
+            if estimate.diagnostics.get("location_used", False)
+            else "Comparáveis"
+        ),
+    ]
+)
 
 with tabs[0]:
     left, right = st.columns([1.45, 1])
@@ -2577,8 +3260,13 @@ with tabs[0]:
             )
             st.progress(estimate.diagnostics["confidence_score"] / 100)
             st.caption(
-                "A pontuação considera semelhança física, localização, "
-                "concentração dos pesos e necessidade de tratamento robusto."
+                "A pontuação considera semelhança física, "
+                + (
+                    "localização, "
+                    if estimate.diagnostics.get("location_used", False)
+                    else "a indisponibilidade de localização, "
+                )
+                + "concentração dos pesos e necessidade de tratamento robusto."
             )
 
     with right:
@@ -2910,6 +3598,12 @@ with tabs[1]:
             mapping.ano_construcao,
             mapping.latitude,
             mapping.longitude,
+            GEOCODE_QUERY,
+            GEOCODE_METHOD,
+            GEOCODE_MATCHED_STREET,
+            GEOCODE_SIMILARITY_SCORE,
+            GEOCODE_CDLOG,
+            GEOCODE_FAILURE_REASON,
             "_valor_unitario_original",
             "_valor_unitario_ajustado",
             "_valor_unitario_robusto",
@@ -2991,18 +3685,24 @@ with tabs[1]:
         },
     )
 
-    st.markdown("#### Localização dos comparáveis")
-    render_comparables_map(
-        neighbors=neighbors,
-        latitude_column=mapping.latitude,
-        longitude_column=mapping.longitude,
-        target_latitude=run["target"]["latitude"],
-        target_longitude=run["target"]["longitude"],
-        type_column=mapping.tipo_informacao,
-        value_column=mapping.valor,
-        reference_area_column=run["reference_area_column"],
-        testada_column=mapping.testada,
-    )
+    if estimate.diagnostics.get("location_used", False):
+        st.markdown("#### Localização dos comparáveis")
+        render_comparables_map(
+            neighbors=neighbors,
+            latitude_column=mapping.latitude,
+            longitude_column=mapping.longitude,
+            target_latitude=run["target"]["latitude"],
+            target_longitude=run["target"]["longitude"],
+            type_column=mapping.tipo_informacao,
+            value_column=mapping.valor,
+            reference_area_column=run["reference_area_column"],
+            testada_column=mapping.testada,
+        )
+    else:
+        st.info(
+            "Mapa indisponível nesta execução porque a localização não "
+            "participou do cálculo."
+        )
 
 diagnostics = {
     "aplicativo": APP_NAME,
@@ -3037,6 +3737,19 @@ diagnostics = {
     "area_referencia": run["reference_area_column"],
     "ano_construcao_avaliando": (
         run["target"].get("ano_construcao")
+    ),
+    "area_terreno_como_atributo_fisico": run.get(
+        "land_area_used",
+        False,
+    ),
+    "area_terreno_avaliando": run["target"].get(
+        "siat_area_total_lote"
+    ),
+    "modo_localizacao_amostra": run.get("sample_location_mode", ""),
+    "modo_localizacao_avaliando": run.get("target_location_mode", ""),
+    "metodo_geocodificacao_avaliando": run.get(
+        "target_geocode_method",
+        "",
     ),
     "regime_area": run["area_regime"],
     "regime_area_rotulo": run["area_regime_label"],
@@ -3085,6 +3798,9 @@ with st.expander("Como o estimador trabalha"):
 - considera apenas a finalidade escolhida;
 - utiliza um único regime de área por estimativa: privativo ou total/construído;
 - em imóveis prediais, usa a área selecionada e o ano da construção como atributos físicos;
+- quando o imóvel é térreo, pode incluir a área do terreno como atributo físico adicional sem alterar o denominador do valor unitário;
+- reconhece cabeçalhos usuais de planilhas SIRI e de bases de anúncios;
+- pode geocodificar endereços ou renormalizar o peso físico para 100% quando a localização não estiver disponível;
 - no modo automático, troca para a base alternativa somente quando a preferencial não atinge o K inicial;
 - exclui ofertas de aluguel;
 - normaliza todos os registros para uma finalidade crawler única e seleciona os comparáveis por essa taxonomia;
@@ -3107,6 +3823,6 @@ with st.expander("Como o estimador trabalha"):
 - impede que um único imóvel concentre peso excessivo;
 - reduz a influência de valores unitários extremos;
 - verifica se o imóvel está fora da faixa observada na base;
-- apresenta o valor, a confiança, os comparáveis e o mapa.
+- apresenta o valor, a confiança, os comparáveis e, quando disponível, o mapa.
         """
     )
