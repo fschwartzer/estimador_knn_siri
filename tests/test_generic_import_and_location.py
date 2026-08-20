@@ -90,6 +90,148 @@ class GenericImportTests(unittest.TestCase):
             [450_000.0, 510_000.0],
         )
 
+    def test_vivareal_scrape_schema_runs_without_coordinates(self) -> None:
+        source = pd.DataFrame(
+            {
+                "id_vivareal": range(1, 8),
+                "tipo_imovel": [
+                    "Casa",
+                    "Casa de condomínio",
+                    "Casa",
+                    "Casa",
+                    "Sobrado",
+                    "Casa",
+                    "Casa",
+                ],
+                "finalidade": ["Venda"] * 7,
+                "logradouro": ["Rua Exemplo"] * 7,
+                "numero": [10.0, 20.0, np.nan, 40.0, 50.0, 60.0, np.nan],
+                "bairro_portal": ["Praia de Belas"] * 7,
+                "municipio": ["Porto Alegre"] * 7,
+                "uf": ["RS"] * 7,
+                "area_anunciada_m2": [130, 250, 547, 241, 450, 580, 70],
+                "area_privativa_descrita_m2": [
+                    130,
+                    np.nan,
+                    np.nan,
+                    241,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                ],
+                "area_construida_descrita_m2": [
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    580,
+                    np.nan,
+                ],
+                "area_terreno_m2": [
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    525,
+                    np.nan,
+                ],
+                "area_total_descrita_m2": [
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    np.nan,
+                    125.11,
+                ],
+                "valor_oferta_rs": [
+                    1_500_000,
+                    1_800_000,
+                    3_800_000,
+                    2_700_000,
+                    1_600_000,
+                    3_000_000,
+                    320_000,
+                ],
+                "data_extracao": pd.to_datetime(["2026-08-20"] * 7),
+                "url_anuncio": [f"https://example.test/{i}" for i in range(7)],
+            }
+        )
+
+        enriched, info = schema.enrich_known_schemas(source)
+
+        self.assertFalse(info.siri_detected)
+        self.assertEqual(
+            enriched[schema.DERIVED_AREA_CONSTRUIDA].tolist(),
+            [130.0, 250.0, 547.0, 241.0, 450.0, 580.0, 70.0],
+        )
+        self.assertEqual(
+            int(enriched[schema.DERIVED_AREA_LOTE].notna().sum()),
+            1,
+        )
+
+        mapping = core.ColumnMapping(
+            tipo_informacao=schema.DERIVED_TIPO_INFORMACAO,
+            finalidade_oferta=(
+                schema.DERIVED_FINALIDADE_CRAWLER_NORMALIZADA
+            ),
+            valor="valor_oferta_rs",
+            area_construida=schema.DERIVED_AREA_CONSTRUIDA,
+            area_privativa=schema.DERIVED_AREA_PRIVATIVA,
+            latitude=None,
+            longitude=None,
+            siat_area_total_lote=schema.DERIVED_AREA_LOTE,
+            testada=None,
+        )
+        prepared = core.prepare_data(
+            df=enriched,
+            mapping=mapping,
+            selected_purpose=schema.FINALIDADE_CASA,
+            value_kind="Valor total",
+            reference_area_column=schema.DERIVED_AREA_CONSTRUIDA,
+            remove_offer_duplicates=True,
+            duplicate_date_column="data_extracao",
+            duplicate_identifier_columns=("id_vivareal", "url_anuncio"),
+            duplicate_value_column="valor_oferta_rs",
+            floor_purpose=schema.FINALIDADE_CASA,
+        )
+        parameters = core.calibrated_parameters_for_purpose(
+            schema.FINALIDADE_CASA
+        )
+        target = {
+            "area_construida": 250.0,
+            "area_privativa": None,
+            "siat_area_total_lote": None,
+            "testada": None,
+            "ano_construcao": None,
+            "latitude": None,
+            "longitude": None,
+            schema.DERIVED_AREA_CONSTRUIDA: 250.0,
+        }
+        estimate = core.estimate_knn(
+            preparation=prepared,
+            mapping=mapping,
+            target=target,
+            reference_area_column=schema.DERIVED_AREA_CONSTRUIDA,
+            min_k=int(parameters["min_k"]),
+            max_k=int(parameters["max_k"]),
+            min_effective_neighbors=float(
+                parameters["min_effective_neighbors"]
+            ),
+            similarity_weight=float(parameters["similarity_weight"]),
+            distance_power=float(parameters["distance_power"]),
+            max_individual_weight=float(parameters["max_individual_weight"]),
+            robust_mad_threshold=float(parameters["robust_mad_threshold"]),
+        )
+
+        self.assertEqual(len(prepared.data), 7)
+        self.assertEqual(estimate.diagnostics["k_used"], 5)
+        self.assertFalse(estimate.diagnostics["location_used"])
+        self.assertEqual(estimate.diagnostics["similarity_weight"], 1.0)
+        self.assertGreater(estimate.estimated_total_value, 0)
+
     def test_address_parser_accepts_comma_and_plain_number(self) -> None:
         self.assertEqual(
             poa_geocoder.parse_street_and_number(

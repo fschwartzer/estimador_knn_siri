@@ -42,12 +42,15 @@ estimativa, evitando misturar denominadores incompatíveis.
 
 - reconhecimento automático das colunas usadas pelo SIRI e de cabeçalhos
   comuns de raspagens, inclusive unidades como `(m²)` e moeda `(R$)`;
+- compatibilidade verificada com extrações do Viva Real que usam, entre outros,
+  `valor_oferta_rs`, `area_anunciada_m2`, `area_terreno_m2`, `logradouro`,
+  `numero`, `bairro_portal`, `municipio` e `uf`;
 - taxonomia normalizada de finalidades imobiliárias;
 - tratamento separado para imóveis prediais e territoriais;
 - área privativa ou área total/construída como base da estimativa;
 - ano da construção como atributo físico de imóveis prediais;
 - área do terreno como atributo físico opcional de casas e outros imóveis
-  térreos;
+  térreos, ativada por padrão somente quando a cobertura alcança o K inicial;
 - geocodificação por endereço pelo eixo viário de Porto Alegre, com fallback
   Nominatim;
 - modo sem localização, com peso físico renormalizado para 100%;

@@ -511,6 +511,7 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
         columns,
         [
             "valor_oferta",
+            "valor_oferta_rs",
             "valor",
             "valor_total",
             "preco",
@@ -560,6 +561,7 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
                 "crawler_area_terreno",
                 "area_total_lote",
                 "area_terreno",
+                "area_terreno_m2",
                 "area_do_terreno",
                 "area_lote",
                 "area_do_lote",
@@ -577,11 +579,14 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
             columns,
             [
                 "area_construida",
+                "area_construida_descrita_m2",
                 "crawler_area_construida",
                 "siat_area_construida",
                 "itbacotot",
                 "area_total_construida",
                 "area_edificada",
+                "area_anunciada_m2",
+                "area_total_descrita_m2",
                 "area_util",
                 "area_do_imovel",
                 "area_imovel",
@@ -598,8 +603,10 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
             columns,
             [
                 "area_privativa",
+                "area_privativa_descrita_m2",
                 "crawler_area_privativa",
                 "itbacopriv",
+                "area_anunciada_m2",
                 "area_util",
                 "area_do_imovel",
                 "area_imovel",
@@ -1055,7 +1062,13 @@ def detect_address_columns(df: pd.DataFrame) -> dict[str, str | None]:
         ),
         "neighborhood": choose_existing(
             columns,
-            ["bairro", "neighborhood", "district"],
+            [
+                "bairro",
+                "bairro_portal",
+                "bairro_descricao",
+                "neighborhood",
+                "district",
+            ],
         ),
         "city": choose_existing(
             columns,
@@ -1076,6 +1089,34 @@ def has_usable_address_columns(mapping: dict[str, str | None]) -> bool:
     return bool(mapping.get("full") or mapping.get("street"))
 
 
+def address_component_values(
+    df: pd.DataFrame,
+    column: str,
+    component: str,
+) -> pd.Series:
+    """Formata componentes sem produzir números de porta como ``136.0``."""
+    values = df[column].astype("string").fillna("").str.strip()
+    if component != "number":
+        return values
+
+    numeric_values = pd.to_numeric(values, errors="coerce")
+    integer_mask = (
+        numeric_values.notna()
+        & np.isclose(
+            numeric_values,
+            numeric_values.round(),
+            atol=1e-9,
+        )
+    )
+    values.loc[integer_mask] = (
+        numeric_values.loc[integer_mask]
+        .round()
+        .astype("Int64")
+        .astype("string")
+    )
+    return values
+
+
 def build_address_queries(
     df: pd.DataFrame,
     address_mapping: dict[str, str | None],
@@ -1089,7 +1130,7 @@ def build_address_queries(
             column = address_mapping.get(key)
             if not column or column == full_column:
                 continue
-            values = df[column].astype("string").fillna("").str.strip()
+            values = address_component_values(df, column, key)
             combined: list[str] = []
             for query, value in zip(queries, values):
                 if not value:
@@ -1116,7 +1157,7 @@ def build_address_queries(
             column = address_mapping.get(key)
             if not column:
                 continue
-            values = df[column].astype("string").fillna("").str.strip()
+            values = address_component_values(df, column, key)
             queries = pd.Series(
                 [
                     ", ".join(part for part in (left, right) if part)
@@ -2544,20 +2585,51 @@ with st.form("lite_property_form"):
                     "Essa característica não será utilizada no KNN."
                 )
             if mapping.siat_area_total_lote:
-                default_use_land = normalize_text(selected_purpose) in {
-                    "casa / residencia",
-                    "galpao / deposito",
-                }
+                land_area_values = pd.to_numeric(
+                    df[mapping.siat_area_total_lote],
+                    errors="coerce",
+                )
+                land_comparable_mask = (
+                    purpose_mask
+                    & df[mapping.tipo_informacao]
+                    .map(normalize_text)
+                    .isin(["guia itbi", "oferta"])
+                    & np.isfinite(land_area_values)
+                    & land_area_values.gt(0)
+                )
+                land_comparable_count = int(land_comparable_mask.sum())
+                minimum_land_sample = int(
+                    selected_knn_parameters["min_k"]
+                )
+                land_feature_supported = land_comparable_count >= 2
+                default_use_land = (
+                    normalize_text(selected_purpose)
+                    in {"casa / residencia", "galpao / deposito"}
+                    and land_comparable_count >= minimum_land_sample
+                )
                 use_land_area = st.checkbox(
                     "Imóvel térreo: considerar também a área do terreno",
                     value=default_use_land,
+                    disabled=not land_feature_supported,
                     help=(
                         "Ative quando o lote compõe parcela relevante do valor, "
                         "como em casas, lojas térreas e galpões. A área do terreno "
                         "entra como característica física adicional, mas não muda "
-                        "o denominador usado para calcular o valor unitário."
+                        "o denominador usado para calcular o valor unitário. São "
+                        "necessários ao menos dois comparáveis com essa área."
                     ),
                 )
+                st.caption(
+                    "Cobertura da área do terreno neste segmento: "
+                    f"**{land_comparable_count}** comparável(is) válido(s); "
+                    f"K inicial do perfil: **{minimum_land_sample}**."
+                )
+                if not land_feature_supported:
+                    st.warning(
+                        "A área do terreno não pode ser ativada nesta amostra: "
+                        "há menos de dois comparáveis com valor preenchido. "
+                        "Nenhum terreno será imputado."
+                    )
                 target_area_lote = (
                     st.number_input(
                         "Área do terreno (m²)",
@@ -2701,6 +2773,8 @@ if calculate:
                 "data_registro",
                 "data_coleta",
                 "data_anuncio",
+                "data_criacao_anuncio",
+                "data_extracao",
                 "data",
             ],
         )
@@ -2717,7 +2791,9 @@ if calculate:
                 "imobiliaria_codigo_anuncio",
                 "idf_registro",
                 "id_anuncio",
+                "id_vivareal",
                 "codigo_anuncio",
+                "url_anuncio",
             )
             if column in original_columns
         )

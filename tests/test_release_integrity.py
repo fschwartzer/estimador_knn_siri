@@ -77,6 +77,46 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertIn("siat_ano", literals)
         self.assertIn("ano_construcao", mapping_keywords)
 
+    def test_app_recognizes_vivareal_scrape_columns(self) -> None:
+        tree = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+
+        mapping_literals = {
+            node.value
+            for node in ast.walk(functions["build_mapping"])
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+        }
+        address_literals = {
+            node.value
+            for node in ast.walk(functions["detect_address_columns"])
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+        }
+
+        self.assertTrue(
+            {
+                "valor_oferta_rs",
+                "area_anunciada_m2",
+                "area_privativa_descrita_m2",
+                "area_construida_descrita_m2",
+                "area_terreno_m2",
+            }.issubset(mapping_literals)
+        )
+        self.assertTrue(
+            {
+                "logradouro",
+                "numero",
+                "bairro_portal",
+                "municipio",
+                "uf",
+            }.issubset(address_literals)
+        )
+
     def test_legacy_runtime_modules_are_outside_the_root(self) -> None:
         active = {
             "estimador_knn_core_v6120.py",

@@ -635,6 +635,12 @@ avaliando é informado. Terrenos permanecem sem esse atributo.
 - bases de anúncios reconhecem cabeçalhos usuais de tipo, finalidade, preço,
   área construída, área do terreno e endereço, inclusive unidades no nome ou
   no conteúdo das células;
+- o esquema validado de extrações do Viva Real reconhece área anunciada,
+  áreas descritas, valor de oferta em reais e endereço fragmentado; números de
+  porta integrais não são enviados à geocodificação com sufixo decimal;
+- a área do terreno só é ativada por padrão quando há cobertura para o K
+  inicial e fica indisponível quando menos de dois comparáveis a informam,
+  sem imputação silenciosa;
 - na ausência do tipo da informação em uma base não SIRI, a hipótese auditável
   é que os registros são ofertas;
 - endereços de Porto Alegre usam correspondência fuzzy, faixa par/ímpar e
