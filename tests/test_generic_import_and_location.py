@@ -10,6 +10,23 @@ import geocodificador_porto_alegre as poa_geocoder
 
 
 class GenericImportTests(unittest.TestCase):
+    def test_generic_sale_label_is_canonicalized_as_offer(self) -> None:
+        source = pd.DataFrame(
+            {
+                "Tipo da informação": ["Venda"],
+                "Finalidade": ["Casa"],
+                "Valor do imóvel (R$)": ["R$ 450.000,00"],
+                "Área construída (m²)": ["120 m²"],
+            }
+        )
+
+        enriched, _ = schema.enrich_known_schemas(source)
+
+        self.assertEqual(
+            enriched[schema.DERIVED_TIPO_INFORMACAO].tolist(),
+            ["Oferta"],
+        )
+
     def test_scraped_listing_columns_are_recognized(self) -> None:
         source = pd.DataFrame(
             {
@@ -43,6 +60,34 @@ class GenericImportTests(unittest.TestCase):
         self.assertEqual(
             schema.first_existing(source.columns, ["preco"]),
             "Preço (R$)",
+        )
+
+        mapping = core.ColumnMapping(
+            tipo_informacao=schema.DERIVED_TIPO_INFORMACAO,
+            finalidade_oferta=(
+                schema.DERIVED_FINALIDADE_CRAWLER_NORMALIZADA
+            ),
+            valor="Preço (R$)",
+            area_construida=schema.DERIVED_AREA_CONSTRUIDA,
+            area_privativa=None,
+            latitude=None,
+            longitude=None,
+            siat_area_total_lote=schema.DERIVED_AREA_LOTE,
+            testada=None,
+        )
+        prepared = core.prepare_data(
+            df=enriched,
+            mapping=mapping,
+            selected_purpose=schema.FINALIDADE_CASA,
+            value_kind="Valor total",
+            reference_area_column=schema.DERIVED_AREA_CONSTRUIDA,
+            remove_offer_duplicates=False,
+        )
+        self.assertEqual(len(prepared.data), 2)
+        self.assertEqual(prepared.diagnostics["n_offer"], 2)
+        self.assertEqual(
+            core.to_numeric(enriched["Preço (R$)"]).tolist(),
+            [450_000.0, 510_000.0],
         )
 
     def test_address_parser_accepts_comma_and_plain_number(self) -> None:
@@ -218,6 +263,64 @@ class OptionalLocationTests(unittest.TestCase):
         self.assertIn(
             "validação da localização",
             result.local_excluded_data["_etapa_controle"].tolist(),
+        )
+
+    def test_available_sample_coordinates_can_be_explicitly_ignored(self) -> None:
+        mapping = core.ColumnMapping(
+            **{
+                **self.mapping.__dict__,
+                "latitude": "latitude",
+                "longitude": "longitude",
+            }
+        )
+        data = pd.DataFrame(
+            {
+                "tipo": ["oferta"] * 4,
+                "finalidade": ["casa / residencia"] * 4,
+                "valor": [400_000.0, 430_000.0, 470_000.0, 520_000.0],
+                "area_construida": [100.0, 115.0, 130.0, 150.0],
+                "area_lote": [250.0, 290.0, 340.0, 420.0],
+                "latitude": [-30.03, np.nan, -30.032, np.nan],
+                "longitude": [-51.23, np.nan, -51.232, np.nan],
+                "_valor_unitario_ajustado": [4000.0, 3739.0, 3615.0, 3467.0],
+            }
+        )
+        preparation = core.PreparationResult(
+            data=data,
+            discount=0.10,
+            diagnostics={"purpose": "casa / residencia"},
+            excluded_data=data.iloc[0:0].copy(),
+            flagged_data=data.iloc[0:0].copy(),
+        )
+        target = {
+            "area_construida": 120.0,
+            "area_privativa": None,
+            "siat_area_total_lote": 300.0,
+            "testada": None,
+            "ano_construcao": None,
+            "latitude": None,
+            "longitude": None,
+        }
+
+        result = core.estimate_knn(
+            preparation=preparation,
+            mapping=mapping,
+            target=target,
+            reference_area_column="area_construida",
+            min_k=2,
+            max_k=4,
+            min_effective_neighbors=1.0,
+            similarity_weight=0.85,
+            distance_power=1.0,
+            max_individual_weight=1.0,
+            robust_mad_threshold=2.0,
+        )
+
+        self.assertFalse(result.diagnostics["location_used"])
+        self.assertEqual(result.diagnostics["location_invalid_excluded"], 0)
+        self.assertEqual(
+            result.diagnostics["n_candidates_after_physical_validation"],
+            4,
         )
 
 

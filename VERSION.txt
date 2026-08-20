@@ -1,6 +1,6 @@
-estimador_knn_siri LITE 1.17.0
-Ano da construção (siat_ano) como atributo físico de imóveis prediais.
-Área e ano compartilham o componente físico; terrenos permanecem inalterados.
-Build: estimador-knn-siri-lite-1.17.0-20260814
+estimador_knn_siri LITE 1.18.0
+Área do terreno opcional em imóveis térreos, importação genérica e endereço.
+Localização por EPSG:4326/geocodificação ou KNN exclusivamente físico.
+Build: estimador-knn-siri-lite-1.18.0-20260820
 Núcleo: estimador_knn_core_v6120.py / 6.12.0
 Schema: estimador_knn_schema_v6120.py / 6.12.0

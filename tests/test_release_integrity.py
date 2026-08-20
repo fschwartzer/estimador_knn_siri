@@ -27,7 +27,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_app_loads_the_published_core_and_schema(self) -> None:
         constants = module_constants(ROOT / "app.py")
 
-        self.assertEqual(constants["APP_EDITION"], "LITE 1.17.0")
+        self.assertEqual(constants["APP_EDITION"], "LITE 1.18.0")
         self.assertEqual(constants["CORE_VERSION"], "6.12.0")
         self.assertEqual(
             constants["CORE_MODULE_FILE"],
@@ -43,6 +43,13 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertEqual(schema.MODULE_API_VERSION, constants["CORE_VERSION"])
         self.assertEqual(core.MODULE_BUILD_ID, constants["MODULE_BUILD_ID"])
         self.assertEqual(schema.MODULE_BUILD_ID, constants["MODULE_BUILD_ID"])
+
+    def test_geocoding_runtime_is_published_with_its_dependencies(self) -> None:
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        for dependency in ("geopy", "pyproj", "pyshp", "rapidfuzz"):
+            self.assertIn(dependency, requirements.casefold())
+        self.assertTrue((ROOT / "geocodificador_porto_alegre.py").is_file())
+        self.assertTrue(hasattr(schema, "DERIVED_TIPO_INFORMACAO"))
 
     def test_app_maps_siat_year_to_the_new_mapping_field(self) -> None:
         tree = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))

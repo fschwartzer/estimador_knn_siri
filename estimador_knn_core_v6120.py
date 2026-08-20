@@ -10,7 +10,7 @@ import pandas as pd
 
 
 MODULE_API_VERSION = "6.12.0"
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.17.0-20260814"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.18.0-20260820"
 
 
 MIN_CONSTRUCTION_YEAR = 1500
@@ -103,8 +103,8 @@ class ColumnMapping:
     valor: str
     area_construida: str | None
     area_privativa: str | None
-    latitude: str
-    longitude: str
+    latitude: str | None
+    longitude: str | None
     siat_area_total_lote: str | None
     testada: str | None
     # Mantido ao final e com default para preservar chamadas posicionais
@@ -330,19 +330,35 @@ def to_numeric(series: pd.Series) -> pd.Series:
         .str.strip()
         .str.replace(r"[Rr]\$", "", regex=True)
         .str.replace(r"\s+", "", regex=True)
+        .str.extract(r"([-+]?\d[\d.,]*)", expand=False)
     )
     has_comma = cleaned.str.contains(",", regex=False, na=False)
     has_dot = cleaned.str.contains(".", regex=False, na=False)
     both = has_comma & has_dot
 
-    cleaned.loc[both] = (
-        cleaned.loc[both]
+    comma_is_decimal = both & (
+        cleaned.str.rfind(",") > cleaned.str.rfind(".")
+    )
+    dot_is_decimal = both & ~comma_is_decimal
+    cleaned.loc[comma_is_decimal] = (
+        cleaned.loc[comma_is_decimal]
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
+    )
+    cleaned.loc[dot_is_decimal] = cleaned.loc[dot_is_decimal].str.replace(
+        ",", "", regex=False
     )
     cleaned.loc[has_comma & ~has_dot] = cleaned.loc[
         has_comma & ~has_dot
     ].str.replace(",", ".", regex=False)
+    dot_thousands = (
+        has_dot
+        & ~has_comma
+        & cleaned.str.fullmatch(r"[-+]?\d{1,3}(?:\.\d{3})+", na=False)
+    )
+    cleaned.loc[dot_thousands] = cleaned.loc[dot_thousands].str.replace(
+        ".", "", regex=False
+    )
     return pd.to_numeric(cleaned, errors="coerce")
 
 
@@ -1312,10 +1328,10 @@ def validate_mapping(df: pd.DataFrame, mapping: ColumnMapping) -> None:
         mapping.tipo_informacao,
         mapping.finalidade_oferta,
         mapping.valor,
-        mapping.latitude,
-        mapping.longitude,
     ]
     optional = [
+        mapping.latitude,
+        mapping.longitude,
         mapping.area_construida,
         mapping.area_privativa,
         mapping.siat_area_total_lote,
@@ -1600,11 +1616,11 @@ def prepare_data(
 
     numeric_columns = {
         mapping.valor,
-        mapping.latitude,
-        mapping.longitude,
         reference_area_column,
     }
     for column in (
+        mapping.latitude,
+        mapping.longitude,
         mapping.area_construida,
         mapping.area_privativa,
         mapping.siat_area_total_lote,
@@ -1844,6 +1860,13 @@ def _resolve_features(
             ]
         )
     else:
+        # Em imóveis prediais térreos, o lote é uma característica física
+        # adicional. O denominador do valor unitário continua sendo a área
+        # construída/privativa selecionada pela interface.
+        if lot_valid:
+            pairs.append(
+                ("siat_area_total_lote", mapping.siat_area_total_lote)
+            )
         construction_year = target.get("ano_construcao")
     
         # O ano é uma característica opcional.
@@ -1895,31 +1918,77 @@ def _resolve_features(
     return active, effective_territorial
 
 
+def _valid_coordinate_pair(latitude: Any, longitude: Any) -> bool:
+    try:
+        lat = float(latitude)
+        lon = float(longitude)
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        np.isfinite(lat)
+        and np.isfinite(lon)
+        and -90.0 <= lat <= 90.0
+        and -180.0 <= lon <= 180.0
+    )
+
+
 def _valid_candidates(
     data: pd.DataFrame,
     mapping: ColumnMapping,
     active_features: list[tuple[str, str]],
-) -> pd.DataFrame:
+    use_location: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     result = data.copy()
     columns = [
-        mapping.latitude,
-        mapping.longitude,
         "_valor_unitario_ajustado",
     ] + [column for _, column in active_features]
 
+    missing = [column for column in columns if column not in result.columns]
+    if missing:
+        raise ValueError(
+            "As seguintes características mapeadas não existem na amostra: "
+            + ", ".join(dict.fromkeys(missing))
+        )
+
     valid = np.ones(len(result), dtype=bool)
-    for column in columns:
+    for column in dict.fromkeys(columns):
         result[column] = to_numeric(result[column])
         valid &= np.isfinite(result[column])
 
     valid &= result["_valor_unitario_ajustado"].gt(0).to_numpy()
-    valid &= result[mapping.latitude].between(-90, 90).to_numpy()
-    valid &= result[mapping.longitude].between(-180, 180).to_numpy()
     for key, column in active_features:
         valid &= result[column].gt(0).to_numpy()
         if key == "ano_construcao":
             valid &= valid_construction_year_mask(result[column]).to_numpy()
-    return result.loc[valid].copy()
+
+    physically_valid = result.loc[valid].copy()
+    invalid_location = physically_valid.iloc[0:0].copy()
+    if not use_location:
+        return physically_valid, invalid_location
+
+    if (
+        not mapping.latitude
+        or not mapping.longitude
+        or mapping.latitude not in physically_valid.columns
+        or mapping.longitude not in physically_valid.columns
+    ):
+        raise ValueError(
+            "A localização foi ativada, mas as colunas de latitude e longitude "
+            "não estão disponíveis."
+        )
+
+    physically_valid[mapping.latitude] = to_numeric(
+        physically_valid[mapping.latitude]
+    )
+    physically_valid[mapping.longitude] = to_numeric(
+        physically_valid[mapping.longitude]
+    )
+    location_valid = (
+        physically_valid[mapping.latitude].between(-90, 90)
+        & physically_valid[mapping.longitude].between(-180, 180)
+    )
+    invalid_location = physically_valid.loc[~location_valid].copy()
+    return physically_valid.loc[location_valid].copy(), invalid_location
 
 
 def _distance_profile(
@@ -1928,6 +1997,7 @@ def _distance_profile(
     active_features: list[tuple[str, str]],
     target: dict[str, float | None],
     similarity_weight: float,
+    use_location: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     n_features = len(active_features)
     attr_sq = np.zeros(len(data), dtype=float)
@@ -1937,6 +2007,15 @@ def _distance_profile(
         center, scale = _robust_center_scale(values)
         delta = (values - float(target[key])) / scale
         attr_sq += np.square(delta) / n_features
+
+    attribute_distance = np.sqrt(attr_sq)
+    if not use_location:
+        return (
+            attribute_distance,
+            attribute_distance,
+            np.full(len(data), np.nan, dtype=float),
+            np.nan,
+        )
 
     lat_target = float(target["latitude"])
     lon_target = float(target["longitude"])
@@ -1955,7 +2034,7 @@ def _distance_profile(
         + location_weight
         * (np.square(x_km / geo_scale) + np.square(y_km / geo_scale))
     )
-    return np.sqrt(composite_sq), np.sqrt(attr_sq), radial_km, geo_scale
+    return np.sqrt(composite_sq), attribute_distance, radial_km, geo_scale
 
 
 def _extrapolation_diagnostics(
@@ -2285,6 +2364,7 @@ def _local_lower_tail_filter(
     active_features: list[tuple[str, str]],
     target: dict[str, float | None],
     similarity_weight: float,
+    use_location: bool,
     min_k: int,
     max_k: int,
     purpose: Any = "",
@@ -2346,6 +2426,7 @@ def _local_lower_tail_filter(
         active_features,
         target,
         similarity_weight,
+        use_location,
     )
 
     strict_mask = np.ones(len(data), dtype=bool)
@@ -2377,16 +2458,23 @@ def _local_lower_tail_filter(
             & (ratio <= LOCAL_FILTER_RELAXED_AREA_MAX_RATIO)
         )
 
-    strict_mask &= geo_distances <= LOCAL_FILTER_STRICT_GEO_KM
-    relaxed_mask &= geo_distances <= LOCAL_FILTER_RELAXED_GEO_KM
+    if use_location:
+        strict_mask &= geo_distances <= LOCAL_FILTER_STRICT_GEO_KM
+        relaxed_mask &= geo_distances <= LOCAL_FILTER_RELAXED_GEO_KM
 
     if int(strict_mask.sum()) >= LOCAL_FILTER_MIN_REFERENCE:
         reference_positions = np.flatnonzero(strict_mask)
-        reference_mode = "área entre 50% e 200% e distância até 5 km"
+        reference_mode = (
+            "área entre 50% e 200% e distância até 5 km"
+            if use_location
+            else "características físicas entre 50% e 200%"
+        )
     elif int(relaxed_mask.sum()) >= LOCAL_FILTER_MIN_REFERENCE:
         reference_positions = np.flatnonzero(relaxed_mask)
         reference_mode = (
             "área entre 33% e 300% e distância até 10 km"
+            if use_location
+            else "características físicas entre 33% e 300%"
         )
     else:
         cohort_size = min(
@@ -2403,7 +2491,11 @@ def _local_lower_tail_filter(
             distances,
             kind="mergesort",
         )[:cohort_size]
-        reference_mode = "candidatos mais próximos por distância composta"
+        reference_mode = (
+            "candidatos mais próximos por distância composta"
+            if use_location
+            else "candidatos mais próximos por distância física"
+        )
 
     reference = data.iloc[reference_positions].copy()
     reference_values_all = reference[
@@ -2679,6 +2771,23 @@ def estimate_knn(
     active_features, effective_territorial = _resolve_features(
         mapping, target, territorial
     )
+
+    location_columns_available = bool(
+        mapping.latitude
+        and mapping.longitude
+        and mapping.latitude in preparation.data.columns
+        and mapping.longitude in preparation.data.columns
+    )
+    target_location_valid = _valid_coordinate_pair(
+        target.get("latitude"),
+        target.get("longitude"),
+    )
+    location_used = bool(
+        location_columns_available and target_location_valid
+    )
+    effective_similarity_weight = (
+        float(similarity_weight) if location_used else 1.0
+    )
     
     uses_construction_year = any(
         key == "ano_construcao"
@@ -2714,8 +2823,24 @@ def estimate_knn(
                 invalid_construction_years
             )
         
-    data = _valid_candidates(preparation.data, mapping, active_features)
-    candidates_after_physical_validation = int(len(data))
+    data, invalid_locations = _valid_candidates(
+        preparation.data,
+        mapping,
+        active_features,
+        use_location=location_used,
+    )
+    candidates_after_physical_validation = int(
+        len(data) + len(invalid_locations)
+    )
+    location_invalid_excluded_count = int(len(invalid_locations))
+    if location_invalid_excluded_count:
+        invalid_locations["_etapa_controle"] = "validação da localização"
+        invalid_locations["_motivo_exclusao"] = (
+            "Latitude ou longitude ausente, não numérica ou fora dos limites "
+            "do EPSG:4326"
+        )
+        invalid_locations["_motivo_alerta"] = ""
+        invalid_locations = _ordered_control_columns(invalid_locations)
 
     exclusions = set(exclude_indices)
     if exclusions:
@@ -2729,7 +2854,8 @@ def estimate_knn(
             mapping=mapping,
             active_features=active_features,
             target=target,
-            similarity_weight=similarity_weight,
+            similarity_weight=effective_similarity_weight,
+            use_location=location_used,
             min_k=min_k,
             max_k=max_k,
             purpose=preparation.diagnostics.get("purpose", ""),
@@ -2742,14 +2868,23 @@ def estimate_knn(
 
     local_excluded_data = _ordered_control_columns(
         pd.concat(
-            [invalid_construction_years, local_excluded_data],
+            [
+                invalid_construction_years,
+                invalid_locations,
+                local_excluded_data,
+            ],
             ignore_index=True,
             sort=False,
         )
     )
 
     distances, attr_dist, geo_dist, geo_scale = _distance_profile(
-        data, mapping, active_features, target, similarity_weight
+        data,
+        mapping,
+        active_features,
+        target,
+        effective_similarity_weight,
+        location_used,
     )
     order = np.argsort(distances, kind="mergesort")
     max_available = min(int(max_k), len(data))
@@ -2770,24 +2905,19 @@ def estimate_knn(
             distance_power
         )
         
-        # Distância geográfica em metros
-        geo_m = geo_dist[idx] * 1000.0
-        
-        # Fator adicional para provável mesmo edifício
         building_factor = np.ones(candidate_k, dtype=float)
-        
-        # Até 30 m: bônus integral
-        same_building = geo_m <= 30.0
-        building_factor[same_building] = 2.0
-        
-        # Entre 30 e 50 m: bônus decrescente
-        transition = (geo_m > 30.0) & (geo_m <= 50.0)
-        
-        building_factor[transition] = (
-            1.0
-            + (50.0 - geo_m[transition])
-            / (50.0 - 30.0)
-        )
+        if location_used:
+            # Distância geográfica em metros e bônus para provável mesmo
+            # edifício. Sem localização, nenhum bônus espacial é aplicado.
+            geo_m = geo_dist[idx] * 1000.0
+            same_building = geo_m <= 30.0
+            building_factor[same_building] = 2.0
+            transition = (geo_m > 30.0) & (geo_m <= 50.0)
+            building_factor[transition] = (
+                1.0
+                + (50.0 - geo_m[transition])
+                / (50.0 - 30.0)
+            )
         
         # Aplica o bônus antes da normalização
         raw = raw * building_factor
@@ -2876,8 +3006,22 @@ def estimate_knn(
         "max_individual_weight_requested": float(max_individual_weight),
         "max_individual_weight_effective": float(selected_cap),
         "max_weight_observed": float(np.max(selected_weights)),
-        "similarity_weight": float(similarity_weight),
-        "location_weight": float(1.0 - similarity_weight),
+        "location_used": location_used,
+        "location_columns_available": location_columns_available,
+        "target_location_valid": target_location_valid,
+        "location_crs": "EPSG:4326" if location_used else "",
+        "location_distance_unit": "km" if location_used else "",
+        "location_distance_method": (
+            "aproximação equiretangular local sobre coordenadas EPSG:4326"
+            if location_used
+            else "localização ignorada; distância exclusivamente física"
+        ),
+        "location_invalid_excluded": location_invalid_excluded_count,
+        "similarity_weight_requested": float(similarity_weight),
+        "similarity_weight": effective_similarity_weight,
+        "location_weight": (
+            float(1.0 - effective_similarity_weight)
+        ),
         "distance_power": float(distance_power),
         "n_candidates": int(len(data)),
         "n_candidates_after_physical_validation": (

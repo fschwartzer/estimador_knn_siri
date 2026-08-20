@@ -1,4 +1,4 @@
-# Histórico do estimador_knn_siri até a LITE 1.16.0
+# Histórico do estimador_knn_siri até a LITE 1.18.0
 
 > Documento arquivado em 14/08/2026. Algumas instruções de implantação abaixo
 > descrevem versões antigas e não devem ser usadas para publicar a versão
@@ -619,3 +619,31 @@ comparáveis.
 
 A exportação informa o modo solicitado, regime escolhido, motivo da escolha,
 contagens por regime e situação do piso.
+
+
+## Ano da construção opcional — LITE 1.17.0
+
+O ano da construção (`siat_ano`) pode participar da distância física de
+imóveis prediais. Ele só restringe a amostra quando a coluna existe e o ano do
+avaliando é informado. Terrenos permanecem sem esse atributo.
+
+
+## Área do terreno, importação genérica e endereço — LITE 1.18.0
+
+- casas e outros imóveis térreos podem usar a área do terreno como atributo
+  físico adicional, sem alterar o denominador do valor unitário;
+- bases de anúncios reconhecem cabeçalhos usuais de tipo, finalidade, preço,
+  área construída, área do terreno e endereço, inclusive unidades no nome ou
+  no conteúdo das células;
+- na ausência do tipo da informação em uma base não SIRI, a hipótese auditável
+  é que os registros são ofertas;
+- endereços de Porto Alegre usam correspondência fuzzy, faixa par/ímpar e
+  interpolação no CRS métrico TM-POA, convertida depois para EPSG:4326;
+- o fallback online usa Nominatim com limitação de requisições;
+- sem coordenadas utilizáveis, o peso geográfico é zerado e o componente
+  físico é renormalizado para 100%, sem excluir linhas apenas pela localização.
+
+A mudança espacial não cria agregações de vizinhança nem utiliza o alvo; logo,
+não introduz leakage entre treino e teste. Ainda assim, cobertura desigual da
+geocodificação pode gerar viés espacial e deve ser auditada por estrato e
+região.

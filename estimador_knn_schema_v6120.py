@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Iterable
 
 import numpy as np
@@ -8,7 +9,7 @@ import pandas as pd
 
 
 MODULE_API_VERSION = "6.12.0"
-MODULE_BUILD_ID = "estimador-knn-siri-lite-1.17.0-20260814"
+MODULE_BUILD_ID = "estimador-knn-siri-lite-1.18.0-20260820"
 
 
 DERIVED_AREA_LOTE = "__area_total_lote_efetiva"
@@ -16,6 +17,7 @@ DERIVED_AREA_CONSTRUIDA = "__area_construida_efetiva"
 DERIVED_REGIME_AREA = "__regime_area_estimativa"
 DERIVED_AREA_PRIVATIVA = "__area_privativa_efetiva"
 DERIVED_TESTADA = "__testada_efetiva"
+DERIVED_TIPO_INFORMACAO = "__tipo_informacao_efetivo"
 
 DERIVED_FINALIDADE_CRAWLER_INFORMADA = (
     "__finalidade_crawler_informada_normalizada"
@@ -123,6 +125,11 @@ FINALIDADE_CRAWLER_COLUMN_CANDIDATES = (
     "finalidade_pesquisa_crawler",
     "finalidade_pesquisa",
     "pesquisa_finalidade",
+    "finalidade",
+    "finalidade do imóvel",
+    "finalidade do imovel",
+    "uso do imóvel",
+    "uso do imovel",
     "tipo_imovel_pesquisa",
 )
 
@@ -724,12 +731,32 @@ def _comparison_level_series(
     )
 
 
+def _normalized_header(value: object) -> str:
+    """Normaliza pontuação e unidades usuais sem tornar aliases ambíguos."""
+    text = re.sub(r"\([^)]*\)|\[[^]]*\]", " ", _normalize(value))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
 def first_existing(columns: Iterable[str], candidates: Iterable[str]) -> str | None:
-    lookup = {_normalize(column): column for column in columns}
+    column_list = [str(column) for column in columns]
+    exact_lookup: dict[str, str] = {}
+    relaxed_lookup: dict[str, list[str]] = {}
+    for column in column_list:
+        exact_lookup.setdefault(_normalize(column), column)
+        relaxed_lookup.setdefault(_normalized_header(column), []).append(column)
+
     for candidate in candidates:
-        match = lookup.get(_normalize(candidate))
+        match = exact_lookup.get(_normalize(candidate))
         if match is not None:
             return match
+
+    # Cabeçalhos como "Preço (R$)" e "Área construída (m²)" são
+    # reconhecidos somente se a forma simplificada apontar para uma única
+    # coluna, evitando escolher silenciosamente entre campos ambíguos.
+    for candidate in candidates:
+        matches = relaxed_lookup.get(_normalized_header(candidate), [])
+        if len(matches) == 1:
+            return matches[0]
     return None
 
 
@@ -745,25 +772,49 @@ def _numeric(df: pd.DataFrame, column: str | None) -> pd.Series:
         .str.strip()
         .str.replace(r"[Rr]\$", "", regex=True)
         .str.replace(r"\s+", "", regex=True)
+        .str.extract(r"([-+]?\d[\d.,]*)", expand=False)
     )
     has_comma = cleaned.str.contains(",", regex=False, na=False)
     has_dot = cleaned.str.contains(".", regex=False, na=False)
     both = has_comma & has_dot
-    cleaned.loc[both] = (
-        cleaned.loc[both]
+
+    comma_is_decimal = both & (
+        cleaned.str.rfind(",") > cleaned.str.rfind(".")
+    )
+    dot_is_decimal = both & ~comma_is_decimal
+    cleaned.loc[comma_is_decimal] = (
+        cleaned.loc[comma_is_decimal]
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
+    )
+    cleaned.loc[dot_is_decimal] = cleaned.loc[dot_is_decimal].str.replace(
+        ",", "", regex=False
     )
     cleaned.loc[has_comma & ~has_dot] = cleaned.loc[
         has_comma & ~has_dot
     ].str.replace(",", ".", regex=False)
+
+    dot_thousands = (
+        has_dot
+        & ~has_comma
+        & cleaned.str.fullmatch(r"[-+]?\d{1,3}(?:\.\d{3})+", na=False)
+    )
+    cleaned.loc[dot_thousands] = cleaned.loc[dot_thousands].str.replace(
+        ".", "", regex=False
+    )
     return pd.to_numeric(cleaned, errors="coerce")
 
 
 def _coalesce_positive(df: pd.DataFrame, columns: Iterable[str | None]) -> pd.Series:
     result = pd.Series(np.nan, index=df.index, dtype=float)
     for column in columns:
-        values = _numeric(df, column)
+        if column and column in df.columns:
+            resolved = column
+        elif column:
+            resolved = first_existing(df.columns, [column])
+        else:
+            resolved = None
+        values = _numeric(df, resolved)
         values = values.where(np.isfinite(values) & (values > 0))
         result = result.where(result.notna(), values)
     return result
@@ -792,13 +843,45 @@ def _combine_by_information_type(
     return result
 
 
+def _canonical_information_type(value: object) -> str:
+    normalized = _normalize(value)
+    if not normalized:
+        return ""
+    if any(
+        term in normalized
+        for term in ("aluguel", "locacao", "arrendamento")
+    ):
+        return "Oferta Aluguel"
+    if "itbi" in normalized or normalized in {"transacao", "transação"}:
+        return "Guia ITBI"
+    if any(
+        term in normalized
+        for term in ("oferta", "anuncio", "anúncio", "venda", "listing")
+    ):
+        return "Oferta"
+    return str(value).strip()
+
+
 def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     """Cria colunas efetivas sem alterar as colunas originais do arquivo."""
     data = df.copy()
     columns = [str(column) for column in data.columns]
     data.columns = columns
 
-    type_column = first_existing(columns, ["tipo_informacao", "tipo_informação"])
+    source_type_column = first_existing(
+        columns,
+        [
+            "tipo_informacao",
+            "tipo_informação",
+            "tipo de informação",
+            "tipo da informação",
+            "tipo da informacao",
+            "natureza da informação",
+            "natureza da informacao",
+            "transaction_type",
+            "listing_type",
+        ],
+    )
 
     siri_markers = {
         "tipo_informacao",
@@ -812,6 +895,36 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     added: list[str] = []
     notes: list[str] = []
 
+    if source_type_column:
+        information_type = (
+            data[source_type_column]
+            .map(_canonical_information_type)
+            .astype("string")
+        )
+        if not siri_detected:
+            information_type = information_type.mask(
+                information_type.fillna("").str.strip().eq(""),
+                "Oferta",
+            )
+    else:
+        # Bases de raspagem contêm anúncios, não Guias ITBI. A hipótese fica
+        # materializada em uma coluna derivada e nas notas de auditoria.
+        information_type = pd.Series("Oferta", index=data.index, dtype="string")
+
+    data[DERIVED_TIPO_INFORMACAO] = information_type
+    added.append(DERIVED_TIPO_INFORMACAO)
+    type_column = DERIVED_TIPO_INFORMACAO
+    if source_type_column:
+        notes.append(
+            "Tipo da informação normalizado a partir da coluna "
+            f"'{source_type_column}'."
+        )
+    else:
+        notes.append(
+            "Tipo da informação ausente: os registros foram tratados como "
+            "ofertas, hipótese compatível com bases de anúncios raspados."
+        )
+
 
     siat_finality_column = first_existing(
         columns,
@@ -819,7 +932,17 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     )
     crawler_type_column = first_existing(
         columns,
-        ["crawler_tipo_imovel_normalizado"],
+        [
+            "crawler_tipo_imovel_normalizado",
+            "tipo_imovel",
+            "tipo do imóvel",
+            "tipo do imovel",
+            "tipo",
+            "property_type",
+            "property type",
+            "categoria do imóvel",
+            "categoria do imovel",
+        ],
     )
     finalidade_crawler_column = find_finalidade_crawler_column(
         columns
@@ -896,13 +1019,32 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     lot_series = _combine_by_information_type(
         data,
         type_column,
-        offer_columns=["crawler_area_terreno", "siat_area_terreno"],
+        offer_columns=[
+            "crawler_area_terreno",
+            "siat_area_terreno",
+            "area_terreno",
+            "area_do_terreno",
+            "area_lote",
+            "area_do_lote",
+            "terreno_m2",
+            "lote_m2",
+            "land_area",
+            "lot_area",
+        ],
         itbi_columns=["siat_area_terreno", "crawler_area_terreno"],
         fallback_columns=[
             "siat_area_total_lote",
             "area_total_lote",
             "siat_area_terreno",
             "crawler_area_terreno",
+            "area_terreno",
+            "area_do_terreno",
+            "area_lote",
+            "area_do_lote",
+            "terreno_m2",
+            "lote_m2",
+            "land_area",
+            "lot_area",
         ],
     )
     if lot_series.notna().any():
@@ -921,6 +1063,14 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
             "area_construida",
             "siat_area_construida",
             "itbacotot",
+            "area_total_construida",
+            "area_edificada",
+            "area_util",
+            "area_do_imovel",
+            "area_imovel",
+            "built_area",
+            "property_area",
+            "area",
         ],
         itbi_columns=[
             "itbacotot",
@@ -933,6 +1083,13 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
             "crawler_area_construida",
             "siat_area_construida",
             "itbacotot",
+            "area_total_construida",
+            "area_edificada",
+            "area_do_imovel",
+            "area_imovel",
+            "built_area",
+            "property_area",
+            "area",
         ],
     )
     if built_series.notna().any():
@@ -945,9 +1102,27 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     private_series = _combine_by_information_type(
         data,
         type_column,
-        offer_columns=["crawler_area_privativa", "area_privativa", "itbacopriv"],
+        offer_columns=[
+            "crawler_area_privativa",
+            "area_privativa",
+            "itbacopriv",
+            "area_util",
+            "area_do_imovel",
+            "area_imovel",
+            "property_area",
+            "area",
+        ],
         itbi_columns=["itbacopriv", "area_privativa", "crawler_area_privativa"],
-        fallback_columns=["area_privativa", "crawler_area_privativa", "itbacopriv"],
+        fallback_columns=[
+            "area_privativa",
+            "crawler_area_privativa",
+            "itbacopriv",
+            "area_util",
+            "area_do_imovel",
+            "area_imovel",
+            "property_area",
+            "area",
+        ],
     )
     if private_series.notna().any():
         data[DERIVED_AREA_PRIVATIVA] = private_series
@@ -1003,6 +1178,7 @@ def friendly_column_name(column: str) -> str:
         DERIVED_REGIME_AREA: "Regime de área da estimativa",
         DERIVED_AREA_PRIVATIVA: "Área privativa — combinada automaticamente",
         DERIVED_TESTADA: "Testada — combinada automaticamente",
+        DERIVED_TIPO_INFORMACAO: "Tipo da informação — efetivo",
         DERIVED_FINALIDADE_CRAWLER_INFORMADA: (
             "Finalidade da pesquisa — normalizada"
         ),

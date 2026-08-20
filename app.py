@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from pathlib import Path
 
 from geocodificador_porto_alegre import (
     geocode_porto_alegre_address,
@@ -490,10 +489,12 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
     tipo = choose_existing(
         columns,
         [
+            DERIVED_TIPO_INFORMACAO,
             "tipo_informacao",
             "tipo_informação",
             "tipo de informação",
-            DERIVED_TIPO_INFORMACAO,
+            "tipo da informação",
+            "tipo da informacao",
         ],
     )
     finalidade = choose_existing(
@@ -514,6 +515,10 @@ def build_mapping(df: pd.DataFrame) -> tuple[ColumnMapping | None, list[str]]:
             "valor_total",
             "preco",
             "preço",
+            "valor do imóvel",
+            "valor do imovel",
+            "preço do imóvel",
+            "preco do imovel",
             "valor_unitario",
             "valor_unitário",
             "preco_venda",
@@ -1165,7 +1170,16 @@ def geocode_queries(
     for query in queries:
         street, number = parse_street_and_number(query)
         local_result = None
-        if street_axis_index is not None and number is not None:
+        normalized_query = normalize_text(query)
+        query_parts = [part.strip() for part in query.split(",") if part.strip()]
+        local_axis_applicable = (
+            "porto alegre" in normalized_query or len(query_parts) <= 2
+        )
+        if (
+            street_axis_index is not None
+            and number is not None
+            and local_axis_applicable
+        ):
             local_result = geocode_porto_alegre_address(
                 street_axis_index,
                 street,
@@ -2219,6 +2233,11 @@ else:
         "arquivo não contenha todos os marcadores do padrão SIRI completo."
     )
 
+if schema_info.notes:
+    with st.expander("Hipóteses e regras do reconhecimento da planilha"):
+        for schema_note in schema_info.notes:
+            st.markdown(f"- {schema_note}")
+
 siat_purpose_column = choose_existing(
     [str(column) for column in df.columns],
     ["siat_finalidade_descricao", "finalidade_oferta", "finalidade"],
@@ -2562,7 +2581,11 @@ with st.form("lite_property_form"):
             requested_area_mode = "Área total do lote"
 
         if sample_coordinate_count >= 2:
-            target_location_options = ["Endereço", "Coordenadas"]
+            target_location_options = [
+                "Endereço",
+                "Coordenadas",
+                "Ignorar localização",
+            ]
             target_location_mode = st.radio(
                 "Localização do imóvel avaliando",
                 target_location_options,
@@ -2587,13 +2610,21 @@ with st.form("lite_property_form"):
                         format="%.7f",
                     )
                 target_address = ""
-            else:
+            elif target_location_mode == "Endereço":
                 target_address = st.text_input(
                     "Endereço do imóvel avaliando",
                     placeholder="Ex.: Av. Borges de Medeiros, 2244, Porto Alegre, RS",
                 )
                 target_latitude = None
                 target_longitude = None
+            else:
+                target_address = ""
+                target_latitude = None
+                target_longitude = None
+                st.caption(
+                    "O peso geográfico será zerado e o componente físico "
+                    "será renormalizado para 100%."
+                )
         else:
             target_location_mode = "Ignorar localização"
             target_address = ""
@@ -3003,6 +3034,7 @@ if calculate:
                 selected_area_spec["floor_purpose"] is not None
             ),
             "land_area_used": bool(not territorial and use_land_area),
+            "schema_notes": tuple(schema_info.notes),
             "sample_location_mode": sample_location_mode,
             "sample_geocoding_diagnostics": dict(
                 sample_geocoding_diagnostics
@@ -3750,6 +3782,9 @@ diagnostics = {
     "metodo_geocodificacao_avaliando": run.get(
         "target_geocode_method",
         "",
+    ),
+    "hipoteses_reconhecimento_schema": " | ".join(
+        run.get("schema_notes", ())
     ),
     "regime_area": run["area_regime"],
     "regime_area_rotulo": run["area_regime_label"],
