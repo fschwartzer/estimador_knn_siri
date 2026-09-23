@@ -1,0 +1,11 @@
+{
+  "min_k": 32,
+  "max_k": 32,
+  "min_effective_neighbors": 25.6,
+  "similarity_weight": 0.6,
+  "max_individual_weight": 0.25,
+  "distance_power": 0.65,
+  "robust_mad_threshold": 2.5,
+  "floor": 450.0,
+  "config": "f450_w0.6_k32-32_e25.6"
+}

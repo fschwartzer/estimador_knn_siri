@@ -1,0 +1,19 @@
+﻿finalidade,status,ganho_ic95_inferior,ganho_ic95_superior,tipo_teste
+APARTAMENTO,Candidato exploratório; ganho não confirmado,-0.00608599028706174,0.029500175706924,novo_alvo_nao_avaliado_na_rodada_bruta
+CASA / RESIDÊNCIA,Candidato exploratório; ganho não confirmado,-0.028519289845307494,0.060218204840158975,novo_alvo_nao_avaliado_na_rodada_bruta
+COBERTURA,Candidato exploratório; ganho não confirmado,-0.0448749427194064,0.04240719664383192,reutilizado_condicionado_ao_piso_fixo
+CONSTRUÇÃO EM ÁREA DE GLEBA,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+FLAT / APART-HOTEL,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+GALPÃO / DEPÓSITO,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+GARAGEM / VAGA,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+GARAGEM / VAGA NÃO RESIDENCIAL,Candidato exploratório; ganho não confirmado,-0.08302894895604207,0.08938291244344812,reutilizado_condicionado_ao_piso_fixo
+GARAGEM / VAGA RESIDENCIAL,Manter: perfil atual venceu a validação,0.0,0.0,novo_alvo_nao_avaliado_na_rodada_bruta
+GLEBA,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+HOTEL,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+IMÓVEL COMERCIAL,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+IMÓVEL ESPECIAL,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+LOJA,Candidato exploratório; ganho não confirmado,-0.07635410035619505,0.12358652078684496,reutilizado_condicionado_ao_piso_fixo
+LOJA EM GALERIA,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+LOJA EM SHOPPING,Sem amostra suficiente; manter provisoriamente,,,reutilizado_condicionado_ao_piso_fixo
+SALA COMERCIAL,Candidato exploratório; ganho não confirmado,-0.05048025083043571,0.021675979865750913,reutilizado_condicionado_ao_piso_fixo
+TERRENO,Ganho de precisão; demais indicadores exigem cautela,0.2676062457043557,1.1930904325662832,reutilizado_condicionado_ao_piso_fixo

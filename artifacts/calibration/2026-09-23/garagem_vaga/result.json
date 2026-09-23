@@ -1,0 +1,22 @@
+{
+  "purpose": "GARAGEM / VAGA",
+  "reference_area": "__area_privativa_efetiva",
+  "counts": {
+    "2025-02-01_2025-08-01": 14,
+    "2025-08-01_2026-02-01": 11,
+    "2026-02-01_2026-08-01": 9,
+    "2026-08-01_2026-09-24": 2
+  },
+  "status": "amostra_insuficiente",
+  "baseline": {
+    "min_k": 7,
+    "max_k": 30,
+    "min_effective_neighbors": 5.0,
+    "similarity_weight": 0.6666666666666666,
+    "max_individual_weight": 0.3,
+    "distance_power": 1.0,
+    "robust_mad_threshold": 2.5,
+    "floor": 150.0,
+    "config": "baseline"
+  }
+}

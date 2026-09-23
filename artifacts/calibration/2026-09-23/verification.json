@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "checked_purposes": [
+    {
+      "purpose": "APARTAMENTO",
+      "n": 350,
+      "fresh": true
+    },
+    {
+      "purpose": "CASA / RESIDÊNCIA",
+      "n": 196,
+      "fresh": true
+    },
+    {
+      "purpose": "COBERTURA",
+      "n": 75,
+      "fresh": false
+    },
+    {
+      "purpose": "GARAGEM / VAGA NÃO RESIDENCIAL",
+      "n": 80,
+      "fresh": false
+    },
+    {
+      "purpose": "GARAGEM / VAGA RESIDENCIAL",
+      "n": 350,
+      "fresh": true
+    },
+    {
+      "purpose": "LOJA",
+      "n": 34,
+      "fresh": false
+    },
+    {
+      "purpose": "SALA COMERCIAL",
+      "n": 228,
+      "fresh": false
+    },
+    {
+      "purpose": "TERRENO",
+      "n": 77,
+      "fresh": false
+    }
+  ],
+  "total_test_targets": 1390,
+  "source_sha256": "380fa728f4a4ffa9731305ec5cb8275bfeccdc5974cb7e656edb30fde94188ce",
+  "current_schema_sha256": "834a3ae43939f943d064dbd0f5322264fc8ce40c27f456f2a88c3a18b205b04c",
+  "runtime_parameters_unchanged": true
+}

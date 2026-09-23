@@ -1,0 +1,11 @@
+{
+  "min_k": 24,
+  "max_k": 24,
+  "min_effective_neighbors": 19.200000000000003,
+  "similarity_weight": 0.1,
+  "max_individual_weight": 0.2,
+  "distance_power": 0.5,
+  "robust_mad_threshold": 2.0,
+  "floor": 400.0,
+  "config": "f400_w0.1_k24-24_e19.2"
+}

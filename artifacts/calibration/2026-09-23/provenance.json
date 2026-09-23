@@ -1,0 +1,10 @@
+{
+  "source_sha256": "380fa728f4a4ffa9731305ec5cb8275bfeccdc5974cb7e656edb30fde94188ce",
+  "source_bytes": 321653518,
+  "core_sha256": "d7b483a1027d50165e231f7a414059401e2cbd2437ed633e933142cfd22a996e",
+  "schema_sha256": "95c11cfb2e1a02c8efa09dd48b458aac554776471522e0e73dab40d2b5f93fbd",
+  "source_rows": 730246,
+  "unique_registration": 128565,
+  "type_registration_price_unique": 319467,
+  "low_offer_count_10000": 33
+}

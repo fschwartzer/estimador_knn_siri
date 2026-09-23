@@ -1,0 +1,25 @@
+{
+  "purpose": "GLEBA",
+  "reference_area": "__area_total_lote_efetiva",
+  "counts": {
+    "2025-02-01_2025-08-01": 11,
+    "2025-08-01_2026-02-01": 3,
+    "2026-02-01_2026-08-01": 1,
+    "2026-08-01_2026-09-24": 4
+  },
+  "output_suffix": "_mercado",
+  "fixed_validation_floor": 20.0,
+  "holdout_kind": "reutilizado_condicionado_ao_piso_fixo",
+  "status": "amostra_insuficiente",
+  "baseline": {
+    "min_k": 12,
+    "max_k": 25,
+    "min_effective_neighbors": 11.0,
+    "similarity_weight": 0.45,
+    "max_individual_weight": 0.3,
+    "distance_power": 0.35,
+    "robust_mad_threshold": 1.25,
+    "floor": 20.0,
+    "config": "baseline"
+  }
+}

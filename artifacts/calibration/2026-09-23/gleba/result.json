@@ -1,0 +1,22 @@
+{
+  "purpose": "GLEBA",
+  "reference_area": "__area_total_lote_efetiva",
+  "counts": {
+    "2025-02-01_2025-08-01": 25,
+    "2025-08-01_2026-02-01": 20,
+    "2026-02-01_2026-08-01": 23,
+    "2026-08-01_2026-09-24": 10
+  },
+  "status": "amostra_insuficiente",
+  "baseline": {
+    "min_k": 12,
+    "max_k": 25,
+    "min_effective_neighbors": 11.0,
+    "similarity_weight": 0.45,
+    "max_individual_weight": 0.3,
+    "distance_power": 0.35,
+    "robust_mad_threshold": 1.25,
+    "floor": 20.0,
+    "config": "baseline"
+  }
+}

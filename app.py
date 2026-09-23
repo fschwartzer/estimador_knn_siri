@@ -2526,10 +2526,14 @@ with st.form("lite_property_form"):
             c1, c2 = st.columns(2)
             with c1:
                 target_area_lote = st.number_input(
-                    "Área total do lote (m²)",
+                    "Área do lote ou unidade negociada (m²)",
                     min_value=0.0,
                     value=0.0,
                     step=10.0,
+                    help=(
+                        "Em condomínio, informe a área da unidade negociada, "
+                        "não a área total do empreendimento."
+                    ),
                 )
             with c2:
                 target_testada = st.number_input(
@@ -2686,7 +2690,7 @@ with st.form("lite_property_form"):
             target_testada = 0.0
 
         if territorial:
-            requested_area_mode = "Área total do lote"
+            requested_area_mode = "Área do lote/unidade negociada"
 
         if sample_coordinate_count >= 2:
             target_location_options = [
@@ -2846,7 +2850,7 @@ if calculate:
                 "target_value": target_area_lote,
                 "floor_purpose": selected_purpose,
                 "floor_compatible": True,
-                "label": "Área total do lote",
+                "label": "Área do lote/unidade negociada",
             }
         else:
             if (

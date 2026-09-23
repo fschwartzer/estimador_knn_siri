@@ -38,6 +38,12 @@ não altera o denominador do valor unitário. Para terrenos, considera a área d
 lote e a testada. O aplicativo trabalha com um único regime de área em cada
 estimativa, evitando misturar denominadores incompatíveis.
 
+Nos terrenos identificados como condomínio, a base é a área da unidade
+negociada (`area_lote_negociada`, `area_terreno_unidade` ou
+`crawler_area_terreno`), inclusive nas guias ITBI. A área fiscal SIAT pode
+abranger todo o condomínio e não é usada como substituta quando falta a área
+da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
+
 ## Principais recursos
 
 - reconhecimento automático das colunas usadas pelo SIRI e de cabeçalhos

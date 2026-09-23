@@ -1,0 +1,11 @@
+{
+  "min_k": 12,
+  "max_k": 25,
+  "min_effective_neighbors": 11.0,
+  "similarity_weight": 0.45,
+  "max_individual_weight": 0.3,
+  "distance_power": 0.35,
+  "robust_mad_threshold": 1.25,
+  "floor": 200.0,
+  "config": "baseline"
+}

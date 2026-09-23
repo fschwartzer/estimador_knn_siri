@@ -1,0 +1,542 @@
+[
+  {
+    "purpose": "APARTAMENTO",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 32,
+      "max_k": 32,
+      "min_effective_neighbors": 25.6,
+      "similarity_weight": 0.1,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 2400.0,
+      "config": "f2400_w0.1_k32-32_e25.6",
+      "location_weight": 0.9
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "CASA / RESIDÊNCIA",
+    "reference_area": "__area_construida_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 5,
+      "max_k": 15,
+      "min_effective_neighbors": 5,
+      "similarity_weight": 0.25,
+      "max_individual_weight": 0.2,
+      "distance_power": 0.5,
+      "robust_mad_threshold": 2.0,
+      "floor": 0.0,
+      "config": "f0_w0.25_k5-15_e5",
+      "location_weight": 0.75
+    },
+    "current": {
+      "min_k": 5,
+      "max_k": 40,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.85,
+      "max_individual_weight": 0.2,
+      "distance_power": 0.5,
+      "robust_mad_threshold": 2.0,
+      "floor": 800.0,
+      "config": "baseline",
+      "location_weight": 0.15000000000000002
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "COBERTURA",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 16,
+      "max_k": 16,
+      "min_effective_neighbors": 12.8,
+      "similarity_weight": 0.25,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 0.0,
+      "config": "f0_w0.25_k16-16_e12.8",
+      "location_weight": 0.75
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 900.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "CONSTRUÇÃO EM ÁREA DE GLEBA",
+    "reference_area": "__area_total_lote_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 100.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 100.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "FLAT / APART-HOTEL",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "GALPÃO / DEPÓSITO",
+    "reference_area": "__area_construida_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 650.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 650.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "GARAGEM / VAGA",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 150.0,
+      "config": "baseline",
+      "location_weight": 0.33333333333333337
+    },
+    "current": {
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 150.0,
+      "config": "baseline",
+      "location_weight": 0.33333333333333337
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "GARAGEM / VAGA NÃO RESIDENCIAL",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 48,
+      "max_k": 48,
+      "min_effective_neighbors": 38.400000000000006,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 0.0,
+      "config": "f0_w0.666667_k48-48_e38.4",
+      "location_weight": 0.33333333333333337
+    },
+    "current": {
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 150.0,
+      "config": "baseline",
+      "location_weight": 0.33333333333333337
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "GARAGEM / VAGA RESIDENCIAL",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Manter: perfil atual venceu a validação",
+    "candidate": {
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 200.0,
+      "config": "baseline",
+      "location_weight": 0.33333333333333337
+    },
+    "current": {
+      "min_k": 7,
+      "max_k": 30,
+      "min_effective_neighbors": 5.0,
+      "similarity_weight": 0.6666666666666666,
+      "max_individual_weight": 0.3,
+      "distance_power": 1.0,
+      "robust_mad_threshold": 2.5,
+      "floor": 200.0,
+      "config": "baseline",
+      "location_weight": 0.33333333333333337
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "GLEBA",
+    "reference_area": "__area_total_lote_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 20.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 20.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "HOTEL",
+    "reference_area": "__area_construida_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 400.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 400.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "IMÓVEL COMERCIAL",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 850.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 850.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "IMÓVEL ESPECIAL",
+    "reference_area": "__area_construida_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 400.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 400.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "LOJA EM GALERIA",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1000.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1000.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "LOJA EM SHOPPING",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Sem amostra suficiente; manter provisoriamente",
+    "candidate": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 1200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "LOJA",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 8,
+      "max_k": 8,
+      "min_effective_neighbors": 6.4,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 350.0,
+      "config": "f350_w0.45_k8-8_e6.4",
+      "location_weight": 0.55
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 700.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "SALA COMERCIAL",
+    "reference_area": "__area_privativa_efetiva",
+    "status": "Candidato exploratório; ganho não confirmado",
+    "candidate": {
+      "min_k": 32,
+      "max_k": 32,
+      "min_effective_neighbors": 25.6,
+      "similarity_weight": 0.6,
+      "max_individual_weight": 0.25,
+      "distance_power": 0.65,
+      "robust_mad_threshold": 2.5,
+      "floor": 450.0,
+      "config": "f450_w0.6_k32-32_e25.6",
+      "location_weight": 0.4
+    },
+    "current": {
+      "min_k": 9,
+      "max_k": 20,
+      "min_effective_neighbors": 15.0,
+      "similarity_weight": 0.6,
+      "max_individual_weight": 0.25,
+      "distance_power": 0.65,
+      "robust_mad_threshold": 2.5,
+      "floor": 900.0,
+      "config": "baseline",
+      "location_weight": 0.4
+    },
+    "applied_to_runtime": false
+  },
+  {
+    "purpose": "TERRENO",
+    "reference_area": "__area_total_lote_efetiva",
+    "status": "Ganho de precisão; demais indicadores exigem cautela",
+    "candidate": {
+      "min_k": 8,
+      "max_k": 8,
+      "min_effective_neighbors": 6.4,
+      "similarity_weight": 0.1,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 0.0,
+      "config": "f0_w0.1_k8-8_e6.4",
+      "location_weight": 0.9
+    },
+    "current": {
+      "min_k": 12,
+      "max_k": 25,
+      "min_effective_neighbors": 11.0,
+      "similarity_weight": 0.45,
+      "max_individual_weight": 0.3,
+      "distance_power": 0.35,
+      "robust_mad_threshold": 1.25,
+      "floor": 200.0,
+      "config": "baseline",
+      "location_weight": 0.55
+    },
+    "applied_to_runtime": false
+  }
+]

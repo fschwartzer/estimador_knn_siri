@@ -13,6 +13,7 @@ MODULE_BUILD_ID = "estimador-knn-siri-lite-1.19.0-20260826"
 
 
 DERIVED_AREA_LOTE = "__area_total_lote_efetiva"
+DERIVED_REGRA_AREA_LOTE = "__regra_area_lote"
 DERIVED_AREA_CONSTRUIDA = "__area_construida_efetiva"
 DERIVED_REGIME_AREA = "__regime_area_estimativa"
 DERIVED_AREA_PRIVATIVA = "__area_privativa_efetiva"
@@ -1049,12 +1050,43 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
             "lot_area",
         ],
     )
-    if lot_series.notna().any():
+    # Em condomínio, o lote fiscal SIAT pode abranger todo o empreendimento.
+    # A área da unidade negociada deve ser o denominador, também nas guias ITBI.
+    # Não inferimos condomínio pelo preço ou pelo tamanho do terreno.
+    condominium_description = pd.Series(False, index=data.index)
+    for column in (siat_finality_column, crawler_type_column, finalidade_crawler_column):
+        if column:
+            condominium_description |= data[column].map(_normalize).str.contains(
+                "condominio", regex=False, na=False
+            )
+    condominium_land = (
+        data[DERIVED_FINALIDADE_CRAWLER_NORMALIZADA].eq(FINALIDADE_TERRENO)
+        & condominium_description
+    )
+    if condominium_land.any():
+        negotiated_area = _coalesce_positive(
+            data,
+            ["area_lote_negociada", "area_terreno_unidade", "crawler_area_terreno"],
+        )
+        negotiated_area = negotiated_area.where(np.isfinite(negotiated_area))
+        lot_series.loc[condominium_land] = negotiated_area.loc[condominium_land]
+        data[DERIVED_REGRA_AREA_LOTE] = "prioridade por tipo de informação"
+        data.loc[condominium_land, DERIVED_REGRA_AREA_LOTE] = "área da unidade negociada em condomínio"
+        missing_unit_area = condominium_land & negotiated_area.isna()
+        data.loc[missing_unit_area, DERIVED_REGRA_AREA_LOTE] = "área da unidade em condomínio ausente"
+        added.append(DERIVED_REGRA_AREA_LOTE)
+        notes.append(
+            f"Terrenos em condomínio: {int(condominium_land.sum())} registros usam "
+            "a área da unidade negociada; a área total SIAT não é usada como "
+            f"substituta. Área da unidade ausente em {int(missing_unit_area.sum())} registros."
+        )
+    if lot_series.notna().any() or condominium_land.any():
         data[DERIVED_AREA_LOTE] = lot_series
         added.append(DERIVED_AREA_LOTE)
         notes.append(
             "Área do lote combinada: prioriza a área anunciada nas ofertas e "
-            "a área SIAT nas Guias ITBI."
+            "a área SIAT nas Guias ITBI, exceto terrenos em condomínio, que "
+            "exigem a área da unidade negociada."
         )
 
     built_series = _combine_by_information_type(
@@ -1183,7 +1215,8 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
 def friendly_column_name(column: str) -> str:
     labels = {
         "siat_ano": "Ano da construção",
-        DERIVED_AREA_LOTE: "Área total do lote — combinada automaticamente",
+        DERIVED_AREA_LOTE: "Área do lote/unidade — combinada automaticamente",
+        DERIVED_REGRA_AREA_LOTE: "Regra usada para a área do lote",
         DERIVED_AREA_CONSTRUIDA: (
             "Área total/construída — combinada automaticamente"
         ),
