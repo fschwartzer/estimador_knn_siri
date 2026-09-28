@@ -2,6 +2,8 @@
 # VERA
 ## Valor Estimado por Referências Amostrais
 
+[Aplicativo](https://estimador-knn-siri.streamlit.app/)
+
 Aplicativo web para estimar o valor de imóveis a partir de transações e
 ofertas comparáveis. Combina similaridade física, proximidade geográfica e
 tratamentos estatísticos robustos em um fluxo simples, auditável e preparado
