@@ -64,3 +64,50 @@ usando a extração fornecida e preservando as interfaces do aplicativo.
 - Relatórios Markdown, HTML, CSV, JSON e figura SVG gerados. Prévia HTML no
   navegador bloqueada pela política de URL local; entrega textual aberta no Codex
   e estrutura HTML/SVG conferida sem navegação alternativa.
+
+# Preservação de comparáveis de alto padrão — 12/10/2026
+
+## Objetivo e decisão metodológica
+- Preservar registros de alto valor unitário, inclusive lançamentos informados
+  pelo usuário em até R$ 30 mil/m², sem usar esse valor como teto de mercado.
+- Até a referência residencial informada (R$ 30 mil/m²), valor alto isolado gera
+  alerta auditável e não constitui prova de erro cadastral.
+- Manter regras determinísticas, exclusões inferiores, deduplicação, desconto
+  de ofertas, seleção por características/localização e controle de pesos.
+- Preservar essa faixa também na média final e reportar sensibilidade à regra
+  anterior. Acima dela, manter controle robusto, inclusive para ofertas: a base
+  contém ofertas de milhões de R$/m² que antes escapavam do pré-filtro ITBI.
+- A referência não é teto: a faixa protegida é o maior entre R$ 30 mil/m² e o
+  limite estatístico. A definição vem do usuário, não de otimização no teste.
+- Ano de construção e data de cadastramento são conceitos distintos; não imputar
+  ano de lançamento a partir de preço ou data da guia.
+- Preservar interfaces e colunas existentes dos notebooks e da exportação.
+
+## Execução
+1. [concluído] Auditar fonte, pré-filtro global e winsorização; guardar evidência
+   anterior. Apartamentos: limite superior de R$ 16.828,52/m² e 71 guias excluídas.
+2. [concluído] Conferir cobertura de apartamentos no Moinhos de Vento por
+   ano de construção e etapa, usando o nome cadastral `moinhos vento`.
+   Maior ano bruto: 2019; após exigir coordenadas, 2016. Sem ano cadastral 2026.
+3. [concluído] Preservar faixa residencial até R$ 30 mil/m² (ou limite robusto
+   maior), com alertas, no preparo e no cálculo; controle acima da faixa também
+   para ofertas. Atualizadas explicações e diagnósticos. 45 testes aprovados.
+4. [concluído] Comparar comportamento antes/depois sem ajuste de parâmetros:
+   casos de alto VU e amostra temporal fixa, com bloqueio de identidade antes
+   da preparação e avaliação de COD, PRD, mediana e estratos de valor.
+   99 pares sem falhas. No decil superior de apartamentos, mediana das razões
+   0,864 → 0,890 e COD 18,13 → 17,19. PRD global de apartamentos e casas piorou;
+   melhora de equidade não confirmada. Não houve recalibração de parâmetros.
+5. [concluído] Finalizar documentação, verificações e relatório de limitações.
+   Relatório e evidências em `artifacts/diagnostics/2026-10-12/RELATORIO.md`.
+   Código local atualizado e 45 testes aprovados; publicação não realizada.
+
+## Critérios e ressalvas
+- Dados originais não são editados. Novos comparáveis continuam sujeitos à
+  disponibilidade e qualidade de área, ano e coordenadas.
+- A cauda superior protegida pode conter erros: alertas e contribuição dos dados
+  altos devem permanecer visíveis; o limite de peso não elimina esse risco.
+- O teste de agosto/setembro já foi examinado. A comparação nele é diagnóstico
+  de sensibilidade, não confirmação independente nem recalibração de K/pesos.
+- Não declarar ganho de equidade ou COD/PRD antes de medir; não escolher
+  parâmetros usando preço do avaliando ou informação futura.

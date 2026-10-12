@@ -36,7 +36,8 @@ class CalibrationProtocolTests(unittest.TestCase):
         params={k:v for k,v in core.calibrated_parameters_for_purpose('APARTAMENTO').items() if k in cal.PARAMS}
         features,_=core._resolve_features(m,target,False)
         dist,_,geo,_=core._distance_profile(d,m,features,target,params['similarity_weight'])
-        expected=cal.quick_predict(dist,geo,d['_valor_unitario_ajustado'].to_numpy(),params)
+        expected=cal.quick_predict(dist,geo,d['_valor_unitario_ajustado'].to_numpy(),params,
+            upper_tail_protection=core.upper_tail_protection_for_purpose('APARTAMENTO'))
         with patch.object(core,'_local_lower_tail_filter',return_value=(d,pd.DataFrame(),{})):
             actual=core.estimate_knn(p,m,target,'area',**params).estimated_unit_value
         self.assertAlmostEqual(expected,actual,places=9)

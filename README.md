@@ -65,6 +65,8 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - deduplicação de ofertas e exclusão de ofertas de aluguel;
 - fator de oferta calculado ou conservador, conforme a amostra;
 - pré-filtros, controles de cauda e média ponderada robusta;
+- proteção da cauda superior residencial até R$ 30 mil/m², com alertas de
+  auditoria e preservação dessa faixa no cálculo final;
 - controle de conflitos tipológicos;
 - limite para o peso individual de cada comparável;
 - mapa interativo do avaliando e dos comparáveis;
@@ -242,6 +244,19 @@ acompanhe, além dos erros preditivos, a mediana das razões, COD, PRD,
 regressividade por faixa de valor e estabilidade temporal e espacial. A
 ausência sistemática de atributos, como o ano da construção, pode reduzir a
 cobertura e introduzir viés amostral.
+
+Apartamentos, coberturas e casas preservam valores unitários até R$ 30 mil/m²
+no pré-filtro superior e na winsorização final. A referência, informada pelo
+usuário em 12/10/2026, não foi otimizada no teste e não é teto de mercado:
+prevalece o maior entre ela e o limite estatístico. Valores elevados dentro
+dessa faixa podem continuar em alerta. Valores residenciais acima de ambas
+as referências ficam sujeitos ao controle robusto, inclusive em ofertas,
+quando há pelo menos 15 Guias ITBI de referência. Os controles determinísticos,
+de área, ano, finalidade e localização continuam aplicáveis. Essa proteção não
+obriga a seleção de um registro pelo KNN nem comprova a validade de seu preço.
+
+O ano de construção vem do cadastro e difere da data de coleta da informação.
+Uma guia recente de um prédio antigo não é comparável novo em idade física.
 
 Coordenadas interpoladas representam uma aproximação ao longo do eixo da via,
 não a posição cadastral do lote. Se apenas parte da amostra for geocodificada,

@@ -1,5 +1,19 @@
 # Histórico do estimador_knn_siri até a LITE 1.19.0
 
+## Ajuste local da cauda superior residencial — 12/10/2026
+
+- preserva valores unitários de apartamentos, coberturas e casas até
+  R$ 30 mil/m² nos controles superiores do preparo e da média final;
+- aplica o maior entre essa referência de mercado informada pelo usuário e
+  o limite estatístico, sem transformar a referência em teto de mercado;
+- mantém alertas e motivos auditáveis para valores elevados protegidos;
+- estende o controle superior residencial a ofertas acima de ambas as
+  referências, pois a base contém anúncios com erros de milhões de R$/m²;
+- mantém pisos, controles cadastrais, deduplicação, regras de seleção e pesos;
+- preserva assinaturas públicas e colunas utilizadas pelos notebooks;
+- resultados e proveniência em `artifacts/diagnostics/2026-10-12/`;
+- alteração no código local; publicação não realizada nesta tarefa.
+
 ## Relatório sintético de inferência - LITE 1.19.0
 
 - adiciona o PDF aos outputs da VERA, preservando a exportação Excel;

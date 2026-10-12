@@ -1,0 +1,145 @@
+﻿purpose,type,threshold_vu,stage,n,recent_n,recent_unique_registrations
+APARTAMENTO,guia itbi,10000,bruto,1622,300,243
+APARTAMENTO,guia itbi,10000,sem_conflito,1622,300,243
+APARTAMENTO,guia itbi,10000,deduplicado,1396,257,241
+APARTAMENTO,guia itbi,10000,apos_prefiltro,1325,244,229
+APARTAMENTO,guia itbi,10000,com_coordenadas,1186,224,210
+APARTAMENTO,guia itbi,10000,com_coordenadas_e_ano,1186,224,210
+APARTAMENTO,guia itbi,15000,bruto,180,35,30
+APARTAMENTO,guia itbi,15000,sem_conflito,180,35,30
+APARTAMENTO,guia itbi,15000,deduplicado,151,28,28
+APARTAMENTO,guia itbi,15000,apos_prefiltro,80,15,15
+APARTAMENTO,guia itbi,15000,com_coordenadas,69,12,12
+APARTAMENTO,guia itbi,15000,com_coordenadas_e_ano,69,12,12
+APARTAMENTO,guia itbi,20000,bruto,49,7,6
+APARTAMENTO,guia itbi,20000,sem_conflito,49,7,6
+APARTAMENTO,guia itbi,20000,deduplicado,38,4,4
+APARTAMENTO,guia itbi,20000,apos_prefiltro,0,0,0
+APARTAMENTO,guia itbi,20000,com_coordenadas,0,0,0
+APARTAMENTO,guia itbi,20000,com_coordenadas_e_ano,0,0,0
+APARTAMENTO,guia itbi,30000,bruto,25,3,2
+APARTAMENTO,guia itbi,30000,sem_conflito,25,3,2
+APARTAMENTO,guia itbi,30000,deduplicado,20,2,2
+APARTAMENTO,guia itbi,30000,apos_prefiltro,0,0,0
+APARTAMENTO,guia itbi,30000,com_coordenadas,0,0,0
+APARTAMENTO,guia itbi,30000,com_coordenadas_e_ano,0,0,0
+APARTAMENTO,oferta,10000,bruto,54429,4488,1244
+APARTAMENTO,oferta,10000,sem_conflito,42598,3363,813
+APARTAMENTO,oferta,10000,deduplicado,11170,2959,812
+APARTAMENTO,oferta,10000,apos_prefiltro,11170,2959,812
+APARTAMENTO,oferta,10000,com_coordenadas,3821,1031,464
+APARTAMENTO,oferta,10000,com_coordenadas_e_ano,3717,982,459
+APARTAMENTO,oferta,15000,bruto,16042,1587,393
+APARTAMENTO,oferta,15000,sem_conflito,12687,1200,276
+APARTAMENTO,oferta,15000,deduplicado,3343,1065,275
+APARTAMENTO,oferta,15000,apos_prefiltro,3343,1065,275
+APARTAMENTO,oferta,15000,com_coordenadas,775,236,90
+APARTAMENTO,oferta,15000,com_coordenadas_e_ano,718,201,86
+APARTAMENTO,oferta,20000,bruto,3925,465,149
+APARTAMENTO,oferta,20000,sem_conflito,3156,369,111
+APARTAMENTO,oferta,20000,deduplicado,821,324,110
+APARTAMENTO,oferta,20000,apos_prefiltro,821,324,110
+APARTAMENTO,oferta,20000,com_coordenadas,182,58,33
+APARTAMENTO,oferta,20000,com_coordenadas_e_ano,171,48,31
+APARTAMENTO,oferta,30000,bruto,841,46,28
+APARTAMENTO,oferta,30000,sem_conflito,733,42,24
+APARTAMENTO,oferta,30000,deduplicado,170,33,24
+APARTAMENTO,oferta,30000,apos_prefiltro,170,33,24
+APARTAMENTO,oferta,30000,com_coordenadas,68,11,9
+APARTAMENTO,oferta,30000,com_coordenadas_e_ano,67,10,8
+COBERTURA,guia itbi,10000,bruto,36,6,6
+COBERTURA,guia itbi,10000,sem_conflito,36,6,6
+COBERTURA,guia itbi,10000,deduplicado,32,6,6
+COBERTURA,guia itbi,10000,apos_prefiltro,28,6,6
+COBERTURA,guia itbi,10000,com_coordenadas,28,6,6
+COBERTURA,guia itbi,10000,com_coordenadas_e_ano,28,6,6
+COBERTURA,guia itbi,15000,bruto,9,0,0
+COBERTURA,guia itbi,15000,sem_conflito,9,0,0
+COBERTURA,guia itbi,15000,deduplicado,8,0,0
+COBERTURA,guia itbi,15000,apos_prefiltro,4,0,0
+COBERTURA,guia itbi,15000,com_coordenadas,4,0,0
+COBERTURA,guia itbi,15000,com_coordenadas_e_ano,4,0,0
+COBERTURA,guia itbi,20000,bruto,5,0,0
+COBERTURA,guia itbi,20000,sem_conflito,5,0,0
+COBERTURA,guia itbi,20000,deduplicado,4,0,0
+COBERTURA,guia itbi,20000,apos_prefiltro,0,0,0
+COBERTURA,guia itbi,20000,com_coordenadas,0,0,0
+COBERTURA,guia itbi,20000,com_coordenadas_e_ano,0,0,0
+COBERTURA,guia itbi,30000,bruto,0,0,0
+COBERTURA,guia itbi,30000,sem_conflito,0,0,0
+COBERTURA,guia itbi,30000,deduplicado,0,0,0
+COBERTURA,guia itbi,30000,apos_prefiltro,0,0,0
+COBERTURA,guia itbi,30000,com_coordenadas,0,0,0
+COBERTURA,guia itbi,30000,com_coordenadas_e_ano,0,0,0
+COBERTURA,oferta,10000,bruto,2091,115,96
+COBERTURA,oferta,10000,sem_conflito,930,41,31
+COBERTURA,oferta,10000,deduplicado,195,37,31
+COBERTURA,oferta,10000,apos_prefiltro,195,37,31
+COBERTURA,oferta,10000,com_coordenadas,12,8,8
+COBERTURA,oferta,10000,com_coordenadas_e_ano,11,8,8
+COBERTURA,oferta,15000,bruto,585,21,17
+COBERTURA,oferta,15000,sem_conflito,350,15,12
+COBERTURA,oferta,15000,deduplicado,76,14,12
+COBERTURA,oferta,15000,apos_prefiltro,76,14,12
+COBERTURA,oferta,15000,com_coordenadas,2,1,1
+COBERTURA,oferta,15000,com_coordenadas_e_ano,2,1,1
+COBERTURA,oferta,20000,bruto,206,9,8
+COBERTURA,oferta,20000,sem_conflito,113,8,7
+COBERTURA,oferta,20000,deduplicado,22,8,7
+COBERTURA,oferta,20000,apos_prefiltro,22,8,7
+COBERTURA,oferta,20000,com_coordenadas,0,0,0
+COBERTURA,oferta,20000,com_coordenadas_e_ano,0,0,0
+COBERTURA,oferta,30000,bruto,64,0,0
+COBERTURA,oferta,30000,sem_conflito,17,0,0
+COBERTURA,oferta,30000,deduplicado,3,0,0
+COBERTURA,oferta,30000,apos_prefiltro,3,0,0
+COBERTURA,oferta,30000,com_coordenadas,0,0,0
+COBERTURA,oferta,30000,com_coordenadas_e_ano,0,0,0
+CASA / RESIDENCIA,guia itbi,10000,bruto,372,59,44
+CASA / RESIDENCIA,guia itbi,10000,sem_conflito,372,59,44
+CASA / RESIDENCIA,guia itbi,10000,deduplicado,279,47,44
+CASA / RESIDENCIA,guia itbi,10000,apos_prefiltro,246,43,40
+CASA / RESIDENCIA,guia itbi,10000,com_coordenadas,244,43,40
+CASA / RESIDENCIA,guia itbi,10000,com_coordenadas_e_ano,237,42,39
+CASA / RESIDENCIA,guia itbi,15000,bruto,164,29,20
+CASA / RESIDENCIA,guia itbi,15000,sem_conflito,164,29,20
+CASA / RESIDENCIA,guia itbi,15000,deduplicado,122,21,20
+CASA / RESIDENCIA,guia itbi,15000,apos_prefiltro,89,17,16
+CASA / RESIDENCIA,guia itbi,15000,com_coordenadas,89,17,16
+CASA / RESIDENCIA,guia itbi,15000,com_coordenadas_e_ano,88,16,15
+CASA / RESIDENCIA,guia itbi,20000,bruto,72,11,11
+CASA / RESIDENCIA,guia itbi,20000,sem_conflito,72,11,11
+CASA / RESIDENCIA,guia itbi,20000,deduplicado,54,11,11
+CASA / RESIDENCIA,guia itbi,20000,apos_prefiltro,21,7,7
+CASA / RESIDENCIA,guia itbi,20000,com_coordenadas,21,7,7
+CASA / RESIDENCIA,guia itbi,20000,com_coordenadas_e_ano,20,6,6
+CASA / RESIDENCIA,guia itbi,30000,bruto,27,3,3
+CASA / RESIDENCIA,guia itbi,30000,sem_conflito,27,3,3
+CASA / RESIDENCIA,guia itbi,30000,deduplicado,24,3,3
+CASA / RESIDENCIA,guia itbi,30000,apos_prefiltro,0,0,0
+CASA / RESIDENCIA,guia itbi,30000,com_coordenadas,0,0,0
+CASA / RESIDENCIA,guia itbi,30000,com_coordenadas_e_ano,0,0,0
+CASA / RESIDENCIA,oferta,10000,bruto,3962,332,309
+CASA / RESIDENCIA,oferta,10000,sem_conflito,3629,314,292
+CASA / RESIDENCIA,oferta,10000,deduplicado,1182,299,287
+CASA / RESIDENCIA,oferta,10000,apos_prefiltro,1182,299,287
+CASA / RESIDENCIA,oferta,10000,com_coordenadas,1155,294,283
+CASA / RESIDENCIA,oferta,10000,com_coordenadas_e_ano,1084,275,264
+CASA / RESIDENCIA,oferta,15000,bruto,1339,98,94
+CASA / RESIDENCIA,oferta,15000,sem_conflito,1203,91,87
+CASA / RESIDENCIA,oferta,15000,deduplicado,434,88,87
+CASA / RESIDENCIA,oferta,15000,apos_prefiltro,434,88,87
+CASA / RESIDENCIA,oferta,15000,com_coordenadas,429,88,87
+CASA / RESIDENCIA,oferta,15000,com_coordenadas_e_ano,405,85,84
+CASA / RESIDENCIA,oferta,20000,bruto,796,48,48
+CASA / RESIDENCIA,oferta,20000,sem_conflito,694,46,46
+CASA / RESIDENCIA,oferta,20000,deduplicado,244,46,46
+CASA / RESIDENCIA,oferta,20000,apos_prefiltro,244,46,46
+CASA / RESIDENCIA,oferta,20000,com_coordenadas,242,46,46
+CASA / RESIDENCIA,oferta,20000,com_coordenadas_e_ano,226,45,45
+CASA / RESIDENCIA,oferta,30000,bruto,539,22,22
+CASA / RESIDENCIA,oferta,30000,sem_conflito,471,22,22
+CASA / RESIDENCIA,oferta,30000,deduplicado,141,22,22
+CASA / RESIDENCIA,oferta,30000,apos_prefiltro,141,22,22
+CASA / RESIDENCIA,oferta,30000,com_coordenadas,140,22,22
+CASA / RESIDENCIA,oferta,30000,com_coordenadas_e_ano,127,22,22

@@ -166,7 +166,7 @@ def config_grid(purpose):
                 configs.append(c)
     return configs
 
-def quick_predict(dist, geo, values, c):
+def quick_predict(dist, geo, values, c, upper_tail_protection=0.0):
     order = np.argsort(dist,kind='mergesort')[:c['max_k']]
     if len(order)<2: return np.nan
     low = min(c['min_k'],len(order))
@@ -177,7 +177,8 @@ def quick_predict(dist, geo, values, c):
         raw=bonus/np.power(dist[ix]+1e-9,c['distance_power'])
         weights,_=core._cap_and_normalize_weights(raw,c['max_individual_weight'])
         if 1/(weights@weights)>=c['min_effective_neighbors']: break
-    return core._robust_weighted_mean(values[ix],weights,c['robust_mad_threshold'])[0]
+    return core._robust_weighted_mean(values[ix],weights,c['robust_mad_threshold'],
+        upper_tail_protection=upper_tail_protection)[0]
 
 def screen(d,purpose,ref,configs):
     records=[]
@@ -199,7 +200,8 @@ def screen(d,purpose,ref,configs):
                     if c['floor']!=floor: continue
                     w=c['similarity_weight']
                     dist=np.sqrt(w*attr**2+(1-w)*(geo/scale)**2)
-                    pred=quick_predict(dist,geo,values,c)*row[ref]
+                    pred=quick_predict(dist,geo,values,c,
+                        upper_tail_protection=core.upper_tail_protection_for_purpose(purpose))*row[ref]
                     records.append((c['config'],fold,float(row['valor_oferta']),pred))
     frame=pd.DataFrame(records,columns=['config','fold','actual','predicted'])
     scores=[]

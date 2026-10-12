@@ -808,6 +808,18 @@ PREFILTER_ALERT_MODIFIED_Z = 2.5
 PREFILTER_EXCLUDE_MODIFIED_Z = 3.5
 PREFILTER_IQR_OUTER_MULTIPLIER = 3.0
 
+# Referência de mercado residencial informada em 12/10/2026, em R$/m².
+# É uma faixa mínima preservada, não um teto nem um parâmetro ajustado no teste.
+PURPOSE_UPPER_TAIL_PROTECTION = {
+    "apartamento": 30_000.0,
+    "cobertura": 30_000.0,
+    "casa / residencia": 30_000.0,
+}
+
+
+def upper_tail_protection_for_purpose(purpose: Any) -> float:
+    return float(PURPOSE_UPPER_TAIL_PROTECTION.get(normalize_text(purpose), 0.0))
+
 
 _NATURE_COLUMN_NAMES = {
     "natureza_transacao",
@@ -1203,7 +1215,22 @@ def _safe_market_prefilter(
             n_itbi >= PREFILTER_MIN_ITBI_FOR_AUTO_EXCLUSION
         )
 
-    flagged_mask = attention_mask.copy()
+    upper_protection = upper_tail_protection_for_purpose(selected_purpose)
+    effective_upper_vu = upper_vu
+    upper_alert_mask = pd.Series(False, index=kept.index)
+    if upper_protection > 0 and np.isfinite(upper_vu):
+        effective_upper_vu = max(float(upper_vu), upper_protection)
+        upper_alert_mask = kept["_valor_unitario_original"].gt(upper_vu)
+        # Valores residenciais elevados dentro da faixa protegida são alertas.
+        # Acima de ambas as referências, o controle também alcança ofertas:
+        # erros de preço/área em anúncios não podem contaminar o KNN.
+        protected_upper = upper_alert_mask & kept["_valor_unitario_original"].le(effective_upper_vu)
+        extreme_mask &= ~protected_upper
+        extreme_mask |= kept["_valor_unitario_original"].gt(effective_upper_vu)
+
+    flagged_mask = attention_mask | (upper_alert_mask & ~extreme_mask)
+    if auto_exclusion_enabled:
+        flagged_mask &= ~extreme_mask
     if not auto_exclusion_enabled:
         flagged_mask |= extreme_mask
 
@@ -1218,9 +1245,10 @@ def _safe_market_prefilter(
                 "automaticamente porque a amostra possui menos de 15 "
                 "Guias ITBI"
             ),
-            (
-                "Valor unitário na faixa de atenção robusta "
-                "(2,5 < |M| ≤ 3,5)"
+            np.where(
+                upper_alert_mask.loc[flagged.index],
+                "Valor unitário elevado preservado na faixa protegida; conferir preço, área e regime",
+                "Valor unitário na faixa de atenção robusta (2,5 < |M| ≤ 3,5)",
             ),
         )
 
@@ -1230,8 +1258,11 @@ def _safe_market_prefilter(
         statistical_excluded["_etapa_controle"] = (
             "filtro robusto automático"
         )
-        statistical_excluded["_motivo_exclusao"] = (
-            "Valor unitário extremo no pré-filtro robusto"
+        statistical_excluded["_motivo_exclusao"] = np.where(
+            (upper_protection > 0)
+            & statistical_excluded["_valor_unitario_original"].gt(effective_upper_vu),
+            "Valor unitário superior à faixa protegida e ao limite robusto; revisar preço e área",
+            "Valor unitário extremo no pré-filtro robusto",
         )
         statistical_excluded["_motivo_alerta"] = ""
         kept = kept.loc[~extreme_mask].copy()
@@ -1303,6 +1334,9 @@ def _safe_market_prefilter(
         "prefilter_log_mad": robust_mad_log,
         "prefilter_lower_vu": lower_vu,
         "prefilter_upper_vu": upper_vu,
+        "prefilter_upper_tail_protection_vu": upper_protection,
+        "prefilter_effective_upper_vu": effective_upper_vu,
+        "prefilter_upper_preserved_count": int((upper_alert_mask & ~extreme_mask).sum()),
         "prefilter_alert_modified_z": PREFILTER_ALERT_MODIFIED_Z,
         "prefilter_exclude_modified_z": PREFILTER_EXCLUDE_MODIFIED_Z,
         "prefilter_nature_columns_detected": nature_columns,
@@ -1796,6 +1830,7 @@ def _robust_weighted_mean(
     values: np.ndarray,
     weights: np.ndarray,
     mad_threshold: float,
+    upper_tail_protection: float = 0.0,
 ) -> tuple[float, np.ndarray, dict[str, Any]]:
     values = np.asarray(values, dtype=float)
     weights = np.asarray(weights, dtype=float)
@@ -1803,6 +1838,8 @@ def _robust_weighted_mean(
     abs_dev = np.abs(values - median)
     mad = _weighted_quantile(abs_dev, weights, 0.50)
     robust_sigma = 1.4826 * mad
+    if not np.isfinite(upper_tail_protection) or upper_tail_protection < 0:
+        raise ValueError("A faixa protegida superior deve ser finita e não negativa.")
 
     if not np.isfinite(robust_sigma) or robust_sigma <= 1e-12:
         clipped = values.copy()
@@ -1811,6 +1848,7 @@ def _robust_weighted_mean(
     else:
         lower = float(median - mad_threshold * robust_sigma)
         upper = float(median + mad_threshold * robust_sigma)
+        upper = max(upper, float(upper_tail_protection))
         clipped = np.clip(values, lower, upper)
 
     estimate = float(np.sum(weights * clipped))
@@ -1821,6 +1859,7 @@ def _robust_weighted_mean(
         "robust_sigma": float(robust_sigma),
         "robust_lower_bound": lower,
         "robust_upper_bound": upper,
+        "robust_upper_tail_protection_vu": float(upper_tail_protection),
         "robust_adjusted_count": int(np.sum(~np.isclose(values, clipped))),
         "robust_adjusted_weight": float(
             np.sum(weights[~np.isclose(values, clipped)])
@@ -2946,7 +2985,10 @@ def estimate_knn(
 
     values = neighbors["_valor_unitario_ajustado"].to_numpy(dtype=float)
     estimated_unit, robust_values, robust_diag = _robust_weighted_mean(
-        values, selected_weights, robust_mad_threshold
+        values, selected_weights, robust_mad_threshold,
+        upper_tail_protection=upper_tail_protection_for_purpose(
+            preparation.diagnostics.get("purpose", "")
+        ),
     )
 
     mapping_to_target = {

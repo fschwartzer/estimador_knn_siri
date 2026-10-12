@@ -1,0 +1,9 @@
+{
+  "source_sha256": "380fa728f4a4ffa9731305ec5cb8275bfeccdc5974cb7e656edb30fde94188ce",
+  "before_sha256": "d7b483a1027d50165e231f7a414059401e2cbd2437ed633e933142cfd22a996e",
+  "after_sha256": "9f1c2c21a891ec7b78a506b963859ae1623bdf6f893fcb9ae261ad8c394ce964",
+  "seed": 12102026,
+  "train_before": "2026-08-01",
+  "n_pairs": 99,
+  "purpose": "sensibilidade no teste já examinado; sem recalibração; identidade bloqueada antes do preparo"
+}

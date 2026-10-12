@@ -1,0 +1,118 @@
+{
+  "source": "C:\\Users\\fschw\\Documents\\Codex\\estimador_knn_siri\\artifacts\\calibration\\SIRI_pesquisa_aluguel-23.09.2026 14.41.22.xlsx",
+  "source_sha256": "380fa728f4a4ffa9731305ec5cb8275bfeccdc5974cb7e656edb30fde94188ce",
+  "raw_rows": 730246,
+  "date_min": "2023-09-23 00:00:00",
+  "date_max": "2026-09-22 00:00:00",
+  "recent_since": "2026-04-01",
+  "schema_sha256": "834a3ae43939f943d064dbd0f5322264fc8ce40c27f456f2a88c3a18b205b04c",
+  "core_sha256": "d7b483a1027d50165e231f7a414059401e2cbd2437ed633e933142cfd22a996e",
+  "cached_schema_sha256": "95c11cfb2e1a02c8efa09dd48b458aac554776471522e0e73dab40d2b5f93fbd",
+  "cached_residential_validation_sample": 300,
+  "purposes": [
+    {
+      "purpose": "APARTAMENTO",
+      "reference_area": "__area_privativa_efetiva",
+      "profile": {
+        "profile": "global_calibrado_3_meses",
+        "min_k": 12,
+        "max_k": 25,
+        "min_effective_neighbors": 11.0,
+        "similarity_weight": 0.45,
+        "location_weight": 0.55,
+        "max_individual_weight": 0.3,
+        "distance_power": 0.35,
+        "robust_mad_threshold": 1.25
+      },
+      "prepared_rows": 104723,
+      "itbi": 42496,
+      "offers": 62227,
+      "offer_discount": 0.2,
+      "upper_limit": 16828.517494422827,
+      "upper_excluded": 71,
+      "upper_excluded_recent": 13,
+      "upper_excluded_below_30000": 51,
+      "upper_excluded_below_30000_recent": 11,
+      "exclusion_reasons": {
+        "Conflito tipológico desnecessário: a amostra sem conflito atingiu o mínimo configurado": 86458,
+        "Valor unitário inferior ao piso da finalidade (1200.00 R$/m²)": 2873,
+        "Área de referência inválida, nula ou não positiva; Valor unitário inválido ou não positivo": 247,
+        "Valor informado simbólico ou sem representatividade mercadológica; Valor unitário inferior ao piso da finalidade (1200.00 R$/m²)": 115,
+        "Valor unitário extremo no pré-filtro robusto": 71,
+        "Valor informado simbólico ou sem representatividade mercadológica; Área de referência inválida, nula ou não positiva; Valor unitário inválido ou não positivo": 1
+      },
+      "conflict_policy": "conflitos excluídos: amostra limpa suficiente",
+      "date_kept_min": "2023-09-23 00:00:00",
+      "date_kept_max": "2026-09-22 00:00:00"
+    },
+    {
+      "purpose": "COBERTURA",
+      "reference_area": "__area_privativa_efetiva",
+      "profile": {
+        "profile": "global_calibrado_3_meses",
+        "min_k": 12,
+        "max_k": 25,
+        "min_effective_neighbors": 11.0,
+        "similarity_weight": 0.45,
+        "location_weight": 0.55,
+        "max_individual_weight": 0.3,
+        "distance_power": 0.35,
+        "robust_mad_threshold": 1.25
+      },
+      "prepared_rows": 1820,
+      "itbi": 1276,
+      "offers": 544,
+      "offer_discount": 0.2,
+      "upper_limit": 20696.81223654637,
+      "upper_excluded": 4,
+      "upper_excluded_recent": 0,
+      "upper_excluded_below_30000": 4,
+      "upper_excluded_below_30000_recent": 0,
+      "exclusion_reasons": {
+        "Conflito tipológico desnecessário: a amostra sem conflito atingiu o mínimo configurado": 16323,
+        "Valor unitário inferior ao piso da finalidade (900.00 R$/m²)": 73,
+        "Área de referência inválida, nula ou não positiva; Valor unitário inválido ou não positivo": 5,
+        "Valor unitário extremo no pré-filtro robusto": 4,
+        "Valor informado simbólico ou sem representatividade mercadológica; Valor unitário inferior ao piso da finalidade (900.00 R$/m²)": 3
+      },
+      "conflict_policy": "conflitos excluídos: amostra limpa suficiente",
+      "date_kept_min": "2023-09-25 00:00:00",
+      "date_kept_max": "2026-09-22 00:00:00"
+    },
+    {
+      "purpose": "CASA / RESIDENCIA",
+      "reference_area": "__area_construida_efetiva",
+      "profile": {
+        "profile": "especifico_casa_residencia",
+        "min_k": 5,
+        "max_k": 40,
+        "min_effective_neighbors": 5.0,
+        "similarity_weight": 0.85,
+        "location_weight": 0.15,
+        "max_individual_weight": 0.2,
+        "distance_power": 0.5,
+        "robust_mad_threshold": 2.0
+      },
+      "prepared_rows": 42379,
+      "itbi": 10417,
+      "offers": 31962,
+      "offer_discount": 0.2,
+      "upper_limit": 23915.272513489275,
+      "upper_excluded": 33,
+      "upper_excluded_recent": 4,
+      "upper_excluded_below_30000": 9,
+      "upper_excluded_below_30000_recent": 1,
+      "exclusion_reasons": {
+        "Conflito tipológico desnecessário: a amostra sem conflito atingiu o mínimo configurado": 6967,
+        "Valor unitário inferior ao piso da finalidade (800.00 R$/m²)": 1848,
+        "Valor informado simbólico ou sem representatividade mercadológica; Valor unitário inferior ao piso da finalidade (800.00 R$/m²)": 165,
+        "Área de referência inválida, nula ou não positiva; Valor unitário inválido ou não positivo": 50,
+        "Valor unitário extremo no pré-filtro robusto": 33,
+        "Valor informado inválido, nulo ou não positivo; Valor unitário inválido ou não positivo": 8
+      },
+      "conflict_policy": "conflitos excluídos: amostra limpa suficiente",
+      "date_kept_min": "2023-09-23 00:00:00",
+      "date_kept_max": "2026-09-22 00:00:00"
+    }
+  ]
+}

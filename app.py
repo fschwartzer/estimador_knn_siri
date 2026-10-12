@@ -3511,12 +3511,23 @@ with tabs[0]:
 
         if np.isfinite(lower_vu) and np.isfinite(upper_vu):
             st.caption(
-                f"Filtro estatístico: {method}. Faixa robusta automática "
+                f"Filtro estatístico: {method}. Faixa estatística de referência "
                 f"observada: {money_br(lower_vu)}/m² a "
                 f"{money_br(upper_vu)}/m²."
             )
         else:
             st.caption(f"Filtro estatístico: {method}.")
+
+        upper_protection = float(preparation.diagnostics.get("prefilter_upper_tail_protection_vu", 0.0))
+        if upper_protection > 0:
+            protected_count = int(preparation.diagnostics.get("prefilter_upper_preserved_count", 0))
+            st.caption(
+                f"Valores até {money_br(upper_protection)}/m² são preservados nos controles "
+                "da cauda superior. Essa referência não é um teto de mercado: "
+                "se o limite estatístico for maior, ele prevalece. "
+                f"Registros elevados mantidos em alerta: {protected_count}. "
+                "Confira preço, área e regime dos registros alertados."
+            )
 
         if total_excluded:
             st.warning(
@@ -4018,6 +4029,8 @@ with st.expander("Como o estimador trabalha"):
 - exclui valores inválidos ou simbólicos e transmissões não mercadológicas identificáveis;
 - analisa o ln(valor unitário) das Guias ITBI por escore Z modificado;
 - exclui automaticamente extremos robustos somente com 15 ou mais Guias ITBI;
+- em apartamentos, coberturas e casas, preserva valores até R$ 30 mil/m² nos controles superiores, mantendo alertas para conferir preço e área;
+- acima dessa referência e do limite estatístico, o controle superior também alcança ofertas residenciais;
 - mantém apenas em alerta os extremos identificados em amostras de 8 a 14 Guias;
 - aplica filtro local adaptativo com mediana ponderada pela proximidade, critérios robustos e detecção de ruptura entre grupos de valor;
 - exporta os dados excluídos e alertados para auditoria;
@@ -4028,7 +4041,7 @@ with st.expander("Como o estimador trabalha"):
 - informa se a quantidade de Guias ITBI e Ofertas é insuficiente, restrita ou adequada;
 - escolhe automaticamente o número de comparáveis;
 - impede que um único imóvel concentre peso excessivo;
-- reduz a influência de valores unitários extremos;
+- reduz a influência de valores extremos e preserva a faixa residencial de alto valor também no cálculo final;
 - verifica se o imóvel está fora da faixa observada na base;
 - apresenta o valor, a confiança, os comparáveis e, quando disponível, o mapa.
         """
