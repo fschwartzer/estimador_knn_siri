@@ -35,6 +35,8 @@ class ParcelMapTests(unittest.TestCase):
         layer = figure.layout.map.layers[0]
         self.assertEqual(layer.below, "traces")
         self.assertEqual(layer.sourcetype, "geojson")
+        self.assertEqual(layer.type, "fill")
+        self.assertEqual(layer.opacity, 1)
         self.assertTrue(layer.source["features"])
         self.assertGreaterEqual(len(figure.data), 3)
 

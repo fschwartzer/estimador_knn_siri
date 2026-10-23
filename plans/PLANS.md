@@ -156,3 +156,11 @@ validado pelo esquema e por teste de integração sem rede. Consulta real de
 5.681 lotes em 0,271 s nesta máquina (medição pontual, sem garantia de SLA).
 Base preparada: 93.786.112 bytes, 283.290 polígonos, CRS confirmado no catálogo
 da extração com mesmo SHA-256. Prévia interativa no navegador não homologada.
+
+## Preenchimento cinza claro dos lotes — concluído
+- Tela: mesma camada GeoJSON, preenchimento sólido #E4E7EB e contorno.
+- PDF: preenchimento com vazios preservados; projeção única por vértice.
+- Comparação alternada em cinco execuções, recorte de 6.321 lotes: mediana
+  anterior 2,298 s e preenchida 0,965 s nesta máquina, sem garantia de SLA.
+- Sem aumento da base ou duplicação da geometria enviada à tela. Sem efeito
+  sobre estimativas, seleção, pesos, COD, PRD ou regressividade.

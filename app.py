@@ -1714,8 +1714,8 @@ def render_comparables_map(
         ))
         if parcels["features"]:
             parcel_layers = [{"sourcetype": "geojson", "source": parcels,
-                              "type": "line", "color": "#9AA9B2", "opacity": 0.8,
-                              "line": {"width": 1}, "below": "traces"}]
+                              "type": "fill", "color": "#E4E7EB", "opacity": 1,
+                              "fill": {"outlinecolor": "#9AA9B2"}, "below": "traces"}]
         else:
             st.info(parcel_note)
 

@@ -61,11 +61,16 @@ def query_parcels(bounds, database: Path | None = None, limit: int = MAX_PARCELS
     )
 
 
-def parcel_rings(feature_collection):
-    """Inclui contornos exteriores e interiores, sem preencher pátios ou vazios."""
+def parcel_polygons(feature_collection):
+    """Preserva o agrupamento exterior/vazios de cada polígono."""
     for feature in feature_collection["features"]:
         geometry = feature["geometry"]
         polygons = ([geometry["coordinates"]] if geometry["type"] == "Polygon"
                     else geometry["coordinates"])
-        for polygon in polygons:
-            yield from polygon
+        yield from polygons
+
+
+def parcel_rings(feature_collection):
+    """Inclui contornos exteriores e interiores, sem preencher pátios ou vazios."""
+    for polygon in parcel_polygons(feature_collection):
+        yield from polygon

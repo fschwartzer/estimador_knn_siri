@@ -53,7 +53,8 @@ infraestrutura contra comportamentos futuros de dependências.
 
 ## Comportamento e limites
 
-- Mapas mostram os contornos locais dos lotes, preservando pontos e comparáveis.
+- Mapas mostram lotes em cinza claro sólido, com contornos e vazios internos
+  preservados, mantendo pontos e comparáveis destacados.
   A tela permite selecionar lotes fiscais ou fundo neutro. Não há tiles externos.
 - Base ausente ou com hash inválido gera mensagem explícita; não ocorre download.
 - Endereço não resolvido conserva o motivo da falha. Informe coordenadas ou escolha
