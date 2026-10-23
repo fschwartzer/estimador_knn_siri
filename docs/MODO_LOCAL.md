@@ -78,9 +78,10 @@ nem cobertura completa; os contornos não certificam a inscrição dos pontos.
 
 O índice SQLite/RTree consulta retângulos em graus WGS84, sem medir distância,
 intersectar alvos ou criar variáveis do modelo. O custo de leitura depende do
-número de lotes do recorte, limitado a 20 mil. Acima disso, não se mostra um
-subconjunto arbitrário: há aviso explícito para reduzir a região. No mapa
-interativo use “Aproximação cartográfica”; os contornos são carregados no servidor
+número de lotes do recorte. A aplicação carrega todos os polígonos encontrados,
+sem corte por quantidade. Recortes amplos podem exigir mais tempo e memória.
+No mapa interativo, “Aproximação cartográfica” ajusta apenas o enquadramento;
+os contornos são carregados no servidor
 para a região dos pontos e precisam ser recarregados ao navegar para fora dela.
 No PDF, o recorte acompanha o enquadramento dos pontos. Base ausente/corrompida
 ou região sem lotes resulta em pontos sobre fundo neutro e motivo explícito.

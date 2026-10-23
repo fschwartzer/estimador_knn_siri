@@ -1700,7 +1700,7 @@ def render_comparables_map(
     if style_label == "Lotes fiscais locais":
         detail = st.select_slider(
             "Aproximação cartográfica", options=[0, 1, 2, 3, 4], value=0,
-            help="Aumente para consultar menos lotes em regiões muito amplas. Só altera o mapa.",
+            help="Ajusta o enquadramento visual. Todos os lotes da região consultada são carregados, sem corte por quantidade.",
             key="parcel_detail",
         )
         zoom += detail

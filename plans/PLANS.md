@@ -164,3 +164,18 @@ da extração com mesmo SHA-256. Prévia interativa no navegador não homologada
   anterior 2,298 s e preenchida 0,965 s nesta máquina, sem garantia de SLA.
 - Sem aumento da base ou duplicação da geometria enviada à tela. Sem efeito
   sobre estimativas, seleção, pesos, COD, PRD ou regressividade.
+
+## Contexto urbano sem corte de quantidade — 23/10/2026
+- Causa confirmada: ao superar 20 mil lotes, a consulta descartava toda a camada.
+- Prioridade esclarecida pelo usuário: preservar o tecido urbano mesmo com mais demora.
+- [concluído] Remover corte automático na tela e no PDF; leitura incremental pelo cursor.
+- [concluído] Validar recorte real acima de 20 mil lotes, renderização e testes sem rede.
+- Parâmetro limit preservado apenas para chamadas explícitas de notebooks; a aplicação
+  não o utiliza. Nenhuma amostragem, truncamento ou simplificação da base visual.
+- Alteração estritamente cartográfica: nenhuma entrada ou saída do KNN alterada;
+  nenhum efeito em COD/PRD/regressividade nem novo risco de leakage/overfitting.
+
+Verificação: regressão falhou antes do ajuste e passou depois. 56 testes passaram
+com rede bloqueada. Recorte de 157.035 lotes carregado em 7,732 s; PDF com
+93.044 lotes renderizado e inspecionado em 9,93 s. Tempos pontuais nesta máquina;
+recortes maiores consomem mais memória e tempo no servidor e no navegador.

@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ParcelMapTests(unittest.TestCase):
+    def test_default_query_keeps_urban_context_above_twenty_thousand_parcels(self):
+        # Recorte real que anteriormente descartava toda a camada ao superar 20 mil lotes.
+        with patch.object(socket.socket, "connect", side_effect=AssertionError("Rede proibida")):
+            parcels, note = query_parcels((-51.26, -30.09, -51.12, -29.99))
+        self.assertGreater(len(parcels["features"]), 20000)
+        self.assertNotIn("Região ampla", note)
+
     def test_interactive_map_embeds_local_geojson_below_the_points(self):
         import numpy as np
         import pandas as pd
