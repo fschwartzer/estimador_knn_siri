@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+from local_parcel_map import parcel_rings, query_parcels, viewport_bounds
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -47,7 +48,7 @@ MAX_TILE_REQUESTS = 48
 MAX_VECTOR_TILE_ZOOM = 14
 MIN_MAP_ZOOM = 3.0
 MAX_MAP_ZOOM = 20.0
-CARTO_ATTRIBUTION = "VERA · mapa local sem cartografia de fundo"
+CARTO_ATTRIBUTION = "VERA · lotes fiscais SMAMUS · cartografia local"
 
 
 def _finite_number(value: Any) -> float | None:
@@ -491,6 +492,17 @@ def render_comparables_map_image(
     image = _fallback_map(MAP_WIDTH_PX, MAP_HEIGHT_PX)
     # fetch_tiles é mantido por compatibilidade, mas não habilita rede.
     draw = ImageDraw.Draw(image, "RGBA")
+    scale = TILE_SIZE_PX * 2 ** display_zoom
+    map_center_lon = center_x / scale * 360 - 180
+    map_center_lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * center_y / scale))))
+    parcels, parcel_note = query_parcels(viewport_bounds(
+        map_center_lat, map_center_lon, display_zoom, MAP_WIDTH_PX, MAP_HEIGHT_PX,
+    ))
+    for ring in parcel_rings(parcels):
+        pixels = [_mercator_xy(point[1], point[0], display_zoom) for point in ring]
+        if len(pixels) >= 2:
+            draw.line([(x - viewport_left, y - viewport_top) for x, y in pixels],
+                      fill=(135, 151, 162, 165), width=1)
     marker_font = _map_font(21, bold=True)
     legend_font = _map_font(17)
     attribution_font = _map_font(14)
@@ -588,7 +600,7 @@ def render_comparables_map_image(
 
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
-    source_note = "Modo local obrigatório: grade neutra; mapa-base externo indisponível por política."
+    source_note = "Modo local obrigatório. " + parcel_note
     return output.getvalue(), source_note
 
 

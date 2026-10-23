@@ -1,6 +1,8 @@
 """Verifica recursos previamente instalados, sem baixar ou instalar arquivos."""
 from pathlib import Path
 import importlib
+import hashlib
+import json
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +20,15 @@ def main() -> None:
     if not index.names:
         raise RuntimeError("Base geográfica sem logradouros.")
     index.reader.close()
-    print("Instalação local validada: dependências e base geográfica íntegra.")
+    metadata = json.loads((ROOT / "assets/lotes_fiscais.json").read_text(encoding="utf-8"))
+    actual_hash = hashlib.sha256((ROOT / "assets/lotes_fiscais.sqlite").read_bytes()).hexdigest()
+    if actual_hash != metadata["database_sha256"]:
+        raise RuntimeError("Integridade inválida na base local de lotes fiscais.")
+    from local_parcel_map import query_parcels
+    parcels, note = query_parcels((-51.231, -30.031, -51.229, -30.029))
+    if not parcels["features"]:
+        raise RuntimeError(note)
+    print("Instalação local validada: dependências, eixo viário e lotes fiscais.")
 
 
 if __name__ == "__main__":

@@ -117,7 +117,7 @@ class PdfReportTests(unittest.TestCase):
         fetch_tile.assert_not_called()
         render_tile.assert_not_called()
 
-    def test_map_has_deterministic_offline_fallback(self) -> None:
+    def test_map_draws_local_parcels_without_external_tiles(self) -> None:
         report = prepare_report_comparables(
             sample_neighbors(),
             latitude_column="lat",
@@ -133,7 +133,7 @@ class PdfReportTests(unittest.TestCase):
         )
         image = Image.open(BytesIO(image_bytes))
         self.assertEqual(image.size, (MAP_WIDTH_PX, MAP_HEIGHT_PX))
-        self.assertIn("indisponível", note)
+        self.assertIn("Lotes fiscais SMAMUS", note)
 
     def test_pdf_is_generated_with_map_and_comparables(self) -> None:
         pdf_bytes = build_inference_report_pdf(

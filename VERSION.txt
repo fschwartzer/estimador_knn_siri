@@ -1,5 +1,5 @@
 estimador_knn_siri LITE 1.19.1
-Modo local obrigatório; mapas com fundo neutro sem consultas externas.
+Modo local obrigatório; mapas com lotes fiscais locais sem consultas externas.
 Valor unitário, valor total, COD local, confiança e comparáveis.
 Build: estimador-knn-siri-lite-1.19.0-20260826
 Núcleo: estimador_knn_core_v6120.py / 6.12.0

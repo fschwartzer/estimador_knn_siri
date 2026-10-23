@@ -1,0 +1,15 @@
+{
+  "source_sha256": "37b5bd9bc3b7df6e9c21271c8e43b963a1570d6e0b59c96eb280cedd427d8a33",
+  "source_file": "0_Lotes_Fiscais.geojson",
+  "features": 283290,
+  "crs": "EPSG:4326",
+  "purpose": "visual_only",
+  "database_sha256": "0a3be9c1015e948c021bddfc81ab9fa78d49fc4e9f7873c1c444f725092b02c5",
+  "source_service": "https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/01_PUBLICACOES/dmweb_lotes_fiscais/FeatureServer/0",
+  "collected_at": "2026-10-20T19:41:16.984603+00:00",
+  "crs_evidence": "Catálogo da extração SMAMUS: EPSG:4326 e source_sha256 coincidentes",
+  "validity_verified": false,
+  "coverage_complete": false,
+  "coordinates": "Preservadas integralmente; sem simplificação",
+  "attributes": "Removidos da cópia visual"
+}

@@ -7,3 +7,5 @@
 - Mapas interativo/PDF usam fundo neutro sem tiles externos; telemetria desativada.
 - Instalação corporativa offline com versões fixas e verificação dos recursos.
 - Núcleo, parâmetros e interfaces de cálculo preservados.
+- Lotes fiscais SMAMUS como cartografia local na tela e no PDF, com índice
+  espacial, recortes por região e avisos de cobertura/abrangência.
