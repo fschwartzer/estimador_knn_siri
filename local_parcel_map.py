@@ -9,7 +9,6 @@ import sqlite3
 import zlib
 
 PARCEL_DATABASE = Path(__file__).resolve().parent / "assets" / "lotes_fiscais.sqlite"
-MAX_PARCELS = 20000
 
 
 def viewport_bounds(latitude: float, longitude: float, zoom: float,
@@ -27,14 +26,14 @@ def viewport_bounds(latitude: float, longitude: float, zoom: float,
             min(85.0511, latitude_at(center_y - height / 2)))
 
 
-def query_parcels(bounds, database: Path | None = None, limit: int = MAX_PARCELS):
-    """Consulta RTree somente leitura; não trunca o tecido urbano silenciosamente."""
+def query_parcels(bounds, database: Path | None = None, limit: int | None = None):
+    """Consulta todo o recorte por padrão; limite opcional só para chamadas explícitas."""
     if len(bounds) != 4 or not all(math.isfinite(float(x)) for x in bounds):
         raise ValueError("Retângulo cartográfico inválido.")
     west, south, east, north = map(float, bounds)
     if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
         raise ValueError("Limites cartográficos fora de WGS84 ou invertidos.")
-    if not isinstance(limit, int) or not 1 <= limit <= MAX_PARCELS:
+    if limit is not None and (type(limit) is not int or limit < 1):
         raise ValueError("Limite de lotes inválido.")
     empty = {"type": "FeatureCollection", "features": []}
     path = database if database is not None else PARCEL_DATABASE
@@ -42,15 +41,21 @@ def query_parcels(bounds, database: Path | None = None, limit: int = MAX_PARCELS
         return empty, "Base local de lotes ausente; instale assets/lotes_fiscais.sqlite."
     try:
         with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
-            rows = connection.execute(
+            sql = (
                 "SELECT p.geometry FROM bounds b JOIN parcels p ON p.id=b.id "
-                "WHERE b.west<=? AND b.east>=? AND b.south<=? AND b.north>=? LIMIT ?",
-                (east, west, north, south, limit + 1),
-            ).fetchall()
-        if len(rows) > limit:
-            return empty, f"Região ampla: mais de {limit:,} lotes. Reduza a abrangência cartográfica."
-        features = [{"type": "Feature", "properties": {},
-                     "geometry": json.loads(zlib.decompress(row[0]))} for row in rows]
+                "WHERE b.west<=? AND b.east>=? AND b.south<=? AND b.north>=?"
+            )
+            params = (east, west, north, south)
+            if limit is not None:
+                sql += " LIMIT ?"
+                params += (limit + 1,)
+            features = []
+            # Decodifica pelo cursor, sem duplicar a coleção comprimida em memória.
+            for row in connection.execute(sql, params):
+                if limit is not None and len(features) == limit:
+                    return empty, f"Região ampla: excedeu o limite explícito de {limit:,} lotes."
+                features.append({"type": "Feature", "properties": {},
+                                 "geometry": json.loads(zlib.decompress(row[0]))})
     except (sqlite3.Error, zlib.error, ValueError) as exc:
         return empty, f"Base local de lotes inválida ({type(exc).__name__}); reinstale a base."
     if not features:
