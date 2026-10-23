@@ -122,7 +122,7 @@ Executar sem internet no servidor e navegador, com base e dependências instalad
 1. [concluído] Auditar saídas: eixo viário, Nominatim, mapas interativo/PDF.
 2. [concluído] Remover downloads/fallbacks; incluir eixo com hashes e fundo neutro.
 3. [concluído] Preparar instalação offline e testes com rede bloqueada.
-4. [em andamento] Revisar diff, validar e publicar branch/PR no GitHub.
+4. [concluído] Revisar diff, validar e publicar branch/PR no GitHub (PR #1).
 
 ## Restrições e hipótese
 - Núcleo, pesos, seleção e interfaces de notebooks permanecem compatíveis.
@@ -131,3 +131,10 @@ Executar sem internet no servidor e navegador, com base e dependências instalad
 - Cobertura menor sem Nominatim pode alterar seleção da amostra e viés espacial;
   não alegar melhora em COD, PRD ou regressividade. Comparar em base reservada
   antes de usar populações com cobertura diferente.
+
+## Verificação do modo local
+- 49 testes aprovados com conexões de rede bloqueadas.
+- Interface inicializada permitindo apenas conexões de loopback.
+- Instalação limpa com --no-index e base geográfica íntegra aprovada.
+- Pacote local Windows x64/Python 3.14 preparado com os wheels.
+- Homologação do tráfego do navegador na rede corporativa ainda depende da infraestrutura final.

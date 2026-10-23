@@ -19,7 +19,7 @@ para planilhas do SIRI ou bases de anúncios com cabeçalhos usuais.
 | **Entrada** | Planilhas Excel nos formatos `.xlsx`, `.xlsm` ou `.xls` |
 | **Saída** | Estimativa, comparáveis, mapa e relatórios Excel/PDF |
 | **Abrangência** | Imóveis prediais e territoriais |
-| **Versão atual** | LITE 1.19.0 · núcleo 6.12.0 |
+| **Versão atual** | LITE 1.19.1 · núcleo 6.12.0 |
 
 ## O que o aplicativo faz
 
@@ -62,7 +62,7 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - ano da construção como atributo físico de imóveis prediais;
 - área do terreno como atributo físico opcional de casas e outros imóveis
   térreos, ativada por padrão somente quando a cobertura alcança o K inicial;
-- geocodificação por endereço pelo eixo viário de Porto Alegre, com fallback
+- geocodificação por endereço pelo eixo viário local de Porto Alegre,
   sem fallback externo;
 - modo sem localização, com peso físico renormalizado para 100%;
 - K adaptativo e perfis de parâmetros por finalidade;
@@ -176,11 +176,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Instale as dependências e inicie o aplicativo:
+Prepare previamente a pasta `wheelhouse`, conforme a
+[instalação corporativa sem internet](docs/MODO_LOCAL.md). No servidor isolado,
+instale as dependências, valide os recursos e inicie o aplicativo:
 
 ```powershell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install --no-index --find-links=wheelhouse -r requirements-local.lock.txt
+python scripts/verify_local_install.py
 streamlit run app.py
 ```
 
@@ -230,6 +232,10 @@ repositório são:
 - `geocodificador_porto_alegre.py`;
 - `vera_pdf_report.py`;
 - `requirements.txt`;
+- `requirements-local.lock.txt`;
+- `assets/eixos_poa/` com os quatro arquivos Eixos;
+- `static/vera_header.png`;
+- `scripts/verify_local_install.py`;
 - `.streamlit/config.toml`.
 
 ## Rastreabilidade e uso responsável
