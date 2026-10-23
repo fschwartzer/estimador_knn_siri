@@ -19,7 +19,7 @@ para planilhas do SIRI ou bases de anúncios com cabeçalhos usuais.
 | **Entrada** | Planilhas Excel nos formatos `.xlsx`, `.xlsm` ou `.xls` |
 | **Saída** | Estimativa, comparáveis, mapa e relatórios Excel/PDF |
 | **Abrangência** | Imóveis prediais e territoriais |
-| **Versão atual** | LITE 1.19.0 · núcleo 6.12.0 |
+| **Versão atual** | LITE 1.19.1 · núcleo 6.12.0 |
 
 ## O que o aplicativo faz
 
@@ -62,8 +62,8 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - ano da construção como atributo físico de imóveis prediais;
 - área do terreno como atributo físico opcional de casas e outros imóveis
   térreos, ativada por padrão somente quando a cobertura alcança o K inicial;
-- geocodificação por endereço pelo eixo viário de Porto Alegre, com fallback
-  Nominatim;
+- geocodificação por endereço pelo eixo viário local de Porto Alegre,
+  sem fallback externo;
 - modo sem localização, com peso físico renormalizado para 100%;
 - K adaptativo e perfis de parâmetros por finalidade;
 - combinação de distância física e distância geográfica;
@@ -75,7 +75,7 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - controle de conflitos tipológicos;
 - limite para o peso individual de cada comparável;
 - mapa interativo do avaliando e dos comparáveis;
-- relatório sintético de inferência em PDF, com mapa Claro - CARTO Positron,
+- relatório sintético de inferência em PDF, com mapa local com fundo neutro,
   valor unitário, valor total, COD local, confiança e comparáveis;
 - alertas de extrapolação, cobertura e concentração dos pesos;
 - exportação de comparáveis, diagnósticos, exclusões e alertas para Excel.
@@ -116,9 +116,9 @@ deve ser inteiro entre 1500 e o ano corrente.
 | Interface web | Streamlit 1.47+ |
 | Manipulação de dados | pandas e NumPy |
 | Leitura e escrita de Excel | openpyxl e xlrd |
-| Mapas e visualizações | Plotly / MapLibre e CARTO Positron |
+| Mapas e visualizações | Plotly / MapLibre com fundo neutro local |
 | Relatório PDF | ReportLab, Pillow e mapbox-vector-tile |
-| Geocodificação | eixo TM-POA, pyproj, RapidFuzz e Nominatim/geopy |
+| Geocodificação | eixo TM-POA instalado, pyproj e RapidFuzz |
 | Testes | `unittest` da biblioteca padrão |
 
 As versões aceitas das bibliotecas estão declaradas em `requirements.txt`.
@@ -133,15 +133,15 @@ As versões aceitas das bibliotecas estão declaradas em `requirements.txt`.
 - Git, caso o projeto seja obtido diretamente do repositório.
 
 Não é necessário banco de dados, servidor externo ou GPU. O cálculo é local.
-Na primeira geocodificação de Porto Alegre, os quatro arquivos do eixo viário
-são baixados do Space `fschwartzer/Geocode` e verificados por SHA-256. O
-fallback Nominatim e o mapa-base também dependem de internet. Com coordenadas
-já fornecidas ou no modo sem localização, a estimativa não depende desses
-serviços.
+O modo local é obrigatório: não há download automático, fallback Nominatim
+ou tiles externos. A base `assets/eixos_poa/` acompanha o repositório e é
+validada por SHA-256 antes da geocodificação. Base ausente ou corrompida gera
+erro explícito. Endereços fora da cobertura de Porto Alegre ou não resolvidos
+exigem coordenadas informadas; ignorar localização continua sendo escolha explícita.
+Os mapas interativo e PDF usam fundo neutro com pontos e comparáveis locais.
 
-O mapa do PDF usa os tiles vetoriais oficiais do CARTO Positron e mantém a
-atribuição ao CARTO e ao OpenStreetMap. Se os tiles não puderem ser obtidos, o
-relatório é emitido com uma grade neutra e registra a contingência.
+Consulte [a instalação corporativa sem internet](docs/MODO_LOCAL.md) para preparar
+as dependências, instalar sem consultar índices e validar os recursos locais.
 
 ### Hardware
 
@@ -176,11 +176,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Instale as dependências e inicie o aplicativo:
+Prepare previamente a pasta `wheelhouse`, conforme a
+[instalação corporativa sem internet](docs/MODO_LOCAL.md). No servidor isolado,
+instale as dependências, valide os recursos e inicie o aplicativo:
 
 ```powershell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install --no-index --find-links=wheelhouse -r requirements-local.lock.txt
+python scripts/verify_local_install.py
 streamlit run app.py
 ```
 
@@ -230,6 +232,10 @@ repositório são:
 - `geocodificador_porto_alegre.py`;
 - `vera_pdf_report.py`;
 - `requirements.txt`;
+- `requirements-local.lock.txt`;
+- `assets/eixos_poa/` com os quatro arquivos Eixos;
+- `static/vera_header.png`;
+- `scripts/verify_local_install.py`;
 - `.streamlit/config.toml`.
 
 ## Rastreabilidade e uso responsável

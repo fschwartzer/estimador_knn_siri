@@ -90,7 +90,7 @@ class PdfReportTests(unittest.TestCase):
 
     @patch("vera_pdf_report._render_vector_tile")
     @patch("vera_pdf_report._fetch_vector_tile")
-    def test_close_comparables_use_overzoomed_vector_tiles(
+    def test_legacy_tile_parameter_cannot_enable_network(
         self,
         fetch_tile,
         render_tile,
@@ -114,13 +114,8 @@ class PdfReportTests(unittest.TestCase):
             fetch_tiles=True,
         )
 
-        self.assertTrue(fetch_tile.called)
-        self.assertEqual({call.args[0] for call in fetch_tile.call_args_list}, {14})
-        self.assertTrue(render_tile.called)
-        self.assertEqual(
-            {call.kwargs["tile_size_px"] for call in render_tile.call_args_list},
-            {TILE_SIZE_PX * 2 ** (MAX_MAP_ZOOM - MAX_VECTOR_TILE_ZOOM)},
-        )
+        fetch_tile.assert_not_called()
+        render_tile.assert_not_called()
 
     def test_map_has_deterministic_offline_fallback(self) -> None:
         report = prepare_report_comparables(

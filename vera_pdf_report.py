@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from html import escape
 from io import BytesIO
-import gzip
 import math
 from pathlib import Path
 from typing import Any, Mapping
-from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -50,11 +47,7 @@ MAX_TILE_REQUESTS = 48
 MAX_VECTOR_TILE_ZOOM = 14
 MIN_MAP_ZOOM = 3.0
 MAX_MAP_ZOOM = 20.0
-CARTO_ATTRIBUTION = "© OpenStreetMap contributors · © CARTO"
-CARTO_VECTOR_TILE_URL = (
-    "https://tiles-{subdomain}.basemaps.cartocdn.com/"
-    "vectortiles/carto.streets/v1/{zoom}/{x}/{y}.mvt"
-)
+CARTO_ATTRIBUTION = "VERA · mapa local sem cartografia de fundo"
 
 
 def _finite_number(value: Any) -> float | None:
@@ -219,27 +212,8 @@ def _fetch_vector_tile(
     tile_x: int,
     tile_y: int,
 ) -> tuple[int, int, bytes | None]:
-    max_index = 2**zoom
-    wrapped_x = tile_x % max_index
-    if tile_y < 0 or tile_y >= max_index:
-        return tile_x, tile_y, None
-    subdomain = "abcd"[(wrapped_x + tile_y) % 4]
-    url = CARTO_VECTOR_TILE_URL.format(
-        subdomain=subdomain,
-        zoom=zoom,
-        x=wrapped_x,
-        y=tile_y,
-    )
-    request = Request(url, headers={"User-Agent": "VERA/1.19 PDF report"})
-    try:
-        with urlopen(request, timeout=4.0) as response:
-            tile = response.read()
-            encoding = response.headers.get("Content-Encoding", "").casefold()
-        if encoding == "gzip" or tile.startswith(b"\x1f\x8b"):
-            tile = gzip.decompress(tile)
-        return tile_x, tile_y, tile
-    except Exception:
-        return tile_x, tile_y, None
+    # Interface preservada para notebooks; acesso externo removido definitivamente.
+    return tile_x, tile_y, None
 
 
 def _fallback_map(width: int, height: int) -> Image.Image:
@@ -491,9 +465,9 @@ def render_comparables_map_image(
     *,
     target_latitude: float,
     target_longitude: float,
-    fetch_tiles: bool = True,
+    fetch_tiles: bool = False,
 ) -> tuple[bytes, str]:
-    """Renderiza o avaliando e os comparáveis sobre o CARTO Positron."""
+    """Renderiza pontos sobre grade local, sem qualquer consulta externa."""
     target_latitude = float(target_latitude)
     target_longitude = float(target_longitude)
     valid = (
@@ -507,11 +481,6 @@ def render_comparables_map_image(
         zip(mapped["latitude"].astype(float), mapped["longitude"].astype(float))
     )
     display_zoom = _choose_zoom(points)
-    # O tileset vetorial oficial do CARTO é publicado até o zoom 14. Em níveis
-    # maiores, o tile-pai é ampliado como vetor para preservar o enquadramento.
-    tile_zoom = min(math.floor(display_zoom), MAX_VECTOR_TILE_ZOOM)
-    tile_scale = 2 ** (display_zoom - tile_zoom)
-    rendered_tile_size = TILE_SIZE_PX * tile_scale
     global_pixels = [
         _mercator_xy(lat, lon, display_zoom) for lat, lon in points
     ]
@@ -519,50 +488,8 @@ def render_comparables_map_image(
     center_y = (min(y for _, y in global_pixels) + max(y for _, y in global_pixels)) / 2
     viewport_left = center_x - MAP_WIDTH_PX / 2
     viewport_top = center_y - MAP_HEIGHT_PX / 2
-    first_tile_x = math.floor(viewport_left / rendered_tile_size)
-    last_tile_x = math.floor(
-        (viewport_left + MAP_WIDTH_PX) / rendered_tile_size
-    )
-    first_tile_y = math.floor(viewport_top / rendered_tile_size)
-    last_tile_y = math.floor(
-        (viewport_top + MAP_HEIGHT_PX) / rendered_tile_size
-    )
-    tile_coordinates = [
-        (x, y)
-        for x in range(first_tile_x, last_tile_x + 1)
-        for y in range(first_tile_y, last_tile_y + 1)
-    ]
-
     image = _fallback_map(MAP_WIDTH_PX, MAP_HEIGHT_PX)
-    loaded_tiles = 0
-    if fetch_tiles and len(tile_coordinates) <= MAX_TILE_REQUESTS:
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [
-                executor.submit(_fetch_vector_tile, tile_zoom, x, y)
-                for x, y in tile_coordinates
-            ]
-            for future in as_completed(futures):
-                tile_x, tile_y, tile_bytes = future.result()
-                if tile_bytes is None:
-                    continue
-                destination_x = int(
-                    tile_x * rendered_tile_size - viewport_left
-                )
-                destination_y = int(
-                    tile_y * rendered_tile_size - viewport_top
-                )
-                try:
-                    _render_vector_tile(
-                        image,
-                        tile_bytes,
-                        destination_x=destination_x,
-                        destination_y=destination_y,
-                        tile_size_px=rendered_tile_size,
-                    )
-                    loaded_tiles += 1
-                except Exception:
-                    continue
-
+    # fetch_tiles é mantido por compatibilidade, mas não habilita rede.
     draw = ImageDraw.Draw(image, "RGBA")
     marker_font = _map_font(21, bold=True)
     legend_font = _map_font(17)
@@ -661,12 +588,7 @@ def render_comparables_map_image(
 
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
-    if loaded_tiles == len(tile_coordinates) and loaded_tiles > 0:
-        source_note = "Fundo: Claro - CARTO Positron (tiles vetoriais oficiais)."
-    elif loaded_tiles > 0:
-        source_note = "Fundo: Claro - CARTO Positron (tiles parcialmente disponíveis)."
-    else:
-        source_note = "Fundo CARTO Positron indisponível; grade neutra usada como contingência."
+    source_note = "Modo local obrigatório: grade neutra; mapa-base externo indisponível por política."
     return output.getvalue(), source_note
 
 
@@ -813,7 +735,7 @@ def build_inference_report_pdf(
     reference_area_column: str | None,
     logo_path: str | Path | None = None,
     generated_at: datetime | None = None,
-    fetch_map_tiles: bool = True,
+    fetch_map_tiles: bool = False,
 ) -> bytes:
     """Gera o relatório sintético de inferência da VERA em memória."""
     if neighbors.empty:

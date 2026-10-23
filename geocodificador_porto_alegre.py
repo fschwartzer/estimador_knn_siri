@@ -5,14 +5,9 @@ import hashlib
 import math
 from pathlib import Path
 import re
-import tempfile
 from typing import Any
-from urllib.request import urlretrieve
 
 
-SOURCE_BASE_URL = (
-    "https://huggingface.co/spaces/fschwartzer/Geocode/resolve/main"
-)
 REQUIRED_AXIS_FILES = ("Eixos.shp", "Eixos.shx", "Eixos.dbf", "Eixos.prj")
 EXPECTED_SHA256 = {
     "Eixos.shp": "91d3099c49daa703fd20a347842c68b9c0f2deb7bb519696c9a45c00fa6e674e",
@@ -61,31 +56,22 @@ def parse_street_and_number(address: Any) -> tuple[str, int | None]:
 
 
 def _axis_cache_directory() -> Path:
-    path = Path(tempfile.gettempdir()) / "vera_geocode_eixos_poa"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return Path(__file__).resolve().parent / "assets" / "eixos_poa"
 
 
 def ensure_axis_files(cache_directory: Path | None = None) -> Path:
-    """Materializa os quatro arquivos mínimos do eixo viário do Space Geocode."""
+    """Valida a base instalada; nunca baixa ou modifica recursos em execução."""
     directory = cache_directory or _axis_cache_directory()
-    directory.mkdir(parents=True, exist_ok=True)
     for filename in REQUIRED_AXIS_FILES:
         destination = directory / filename
-        expected_hash = EXPECTED_SHA256[filename]
-        current_hash = (
-            hashlib.sha256(destination.read_bytes()).hexdigest()
-            if destination.is_file()
-            else ""
-        )
-        if current_hash == expected_hash:
-            continue
-        urlretrieve(f"{SOURCE_BASE_URL}/{filename}", destination)
-        downloaded_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
-        if downloaded_hash != expected_hash:
-            raise ValueError(
-                f"Integridade inválida no arquivo geográfico {filename}."
+        if not destination.is_file():
+            raise FileNotFoundError(
+                f"Modo local obrigatório: instale a base geográfica em {directory}. "
+                f"Arquivo ausente: {filename}. Nenhum download será realizado."
             )
+        actual_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if actual_hash != EXPECTED_SHA256[filename]:
+            raise ValueError(f"Integridade inválida no arquivo geográfico {filename}.")
     return directory
 
 
