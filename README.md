@@ -75,7 +75,7 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - controle de conflitos tipológicos;
 - limite para o peso individual de cada comparável;
 - mapa interativo do avaliando e dos comparáveis;
-- relatório sintético de inferência em PDF, com mapa local com fundo neutro,
+- relatório sintético de inferência em PDF, com mapa com lotes fiscais locais,
   valor unitário, valor total, COD local, confiança e comparáveis;
 - alertas de extrapolação, cobertura e concentração dos pesos;
 - exportação de comparáveis, diagnósticos, exclusões e alertas para Excel.
@@ -116,7 +116,7 @@ deve ser inteiro entre 1500 e o ano corrente.
 | Interface web | Streamlit 1.47+ |
 | Manipulação de dados | pandas e NumPy |
 | Leitura e escrita de Excel | openpyxl e xlrd |
-| Mapas e visualizações | Plotly / MapLibre com fundo neutro local |
+| Mapas e visualizações | Plotly / MapLibre com lotes fiscais locais |
 | Relatório PDF | ReportLab, Pillow e mapbox-vector-tile |
 | Geocodificação | eixo TM-POA instalado, pyproj e RapidFuzz |
 | Testes | `unittest` da biblioteca padrão |
@@ -138,7 +138,7 @@ ou tiles externos. A base `assets/eixos_poa/` acompanha o repositório e é
 validada por SHA-256 antes da geocodificação. Base ausente ou corrompida gera
 erro explícito. Endereços fora da cobertura de Porto Alegre ou não resolvidos
 exigem coordenadas informadas; ignorar localização continua sendo escolha explícita.
-Os mapas interativo e PDF usam fundo neutro com pontos e comparáveis locais.
+Os mapas interativo e PDF usam contornos dos lotes fiscais SMAMUS, pontos e comparáveis locais.
 
 Consulte [a instalação corporativa sem internet](docs/MODO_LOCAL.md) para preparar
 as dependências, instalar sem consultar índices e validar os recursos locais.
@@ -233,6 +233,7 @@ repositório são:
 - `vera_pdf_report.py`;
 - `requirements.txt`;
 - `requirements-local.lock.txt`;
+- `local_parcel_map.py`, `assets/lotes_fiscais.sqlite` e `assets/lotes_fiscais.json`;
 - `assets/eixos_poa/` com os quatro arquivos Eixos;
 - `static/vera_header.png`;
 - `scripts/verify_local_install.py`;

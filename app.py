@@ -16,6 +16,7 @@ from geocodificador_porto_alegre import (
     load_street_axis_index,
     parse_street_and_number,
 )
+from local_parcel_map import query_parcels
 from vera_pdf_report import (
     build_inference_report_pdf,
     calculate_comparable_cod,
@@ -433,7 +434,7 @@ div[data-testid="stDataFrame"] {
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-st.caption("Modo local obrigatório · sem consultas externas · mapas com fundo neutro")
+st.caption("Modo local obrigatório · sem consultas externas · cartografia fiscal local")
 
 
 def money_br(value: float, decimals: int = 2) -> str:
@@ -1679,6 +1680,7 @@ def render_comparables_map(
     zoom = calculate_map_zoom(all_points)
 
     style_options = {
+        "Lotes fiscais locais": "white-bg",
         "Sem mapa-base": "white-bg",
     }
     style_label = st.radio(
@@ -1687,11 +1689,35 @@ def render_comparables_map(
         horizontal=True,
         key="estimador_knn_siri_map_style",
         help=(
-            "Modo local obrigatório: fundo neutro, sem consultas externas. "
+            "Modo local obrigatório: lotes fiscais instalados, sem consultas externas. "
             "A navegação e os pontos continuam interativos."
         ),
     )
     map_style = style_options[style_label]
+
+    parcel_layers = []
+    parcel_note = ""
+    if style_label == "Lotes fiscais locais":
+        detail = st.select_slider(
+            "Aproximação cartográfica", options=[0, 1, 2, 3, 4], value=0,
+            help="Aumente para consultar menos lotes em regiões muito amplas. Só altera o mapa.",
+            key="parcel_detail",
+        )
+        zoom += detail
+        # Recorte de apresentação em torno dos pontos, ampliado em 50% de cada lado.
+        # O zoom do navegador não altera a seleção nem as distâncias do estimador.
+        half_lon = max(float(all_points["longitude"].max() - all_points["longitude"].min()), 0.004) / 2 ** detail
+        half_lat = max(float(all_points["latitude"].max() - all_points["latitude"].min()), 0.004) / 2 ** detail
+        parcels, parcel_note = query_parcels((
+            max(-180, center_longitude - half_lon), max(-90, center_latitude - half_lat),
+            min(180, center_longitude + half_lon), min(90, center_latitude + half_lat),
+        ))
+        if parcels["features"]:
+            parcel_layers = [{"sourcetype": "geojson", "source": parcels,
+                              "type": "fill", "color": "#E4E7EB", "opacity": 1,
+                              "fill": {"outlinecolor": "#9AA9B2"}, "below": "traces"}]
+        else:
+            st.info(parcel_note)
 
     line_lats: list[float | None] = []
     line_lons: list[float | None] = []
@@ -1809,6 +1835,7 @@ def render_comparables_map(
         paper_bgcolor="rgba(0,0,0,0)",
         map={
             "style": map_style,
+            "layers": parcel_layers,
             "center": {
                 "lat": center_latitude,
                 "lon": center_longitude,
@@ -1827,6 +1854,10 @@ def render_comparables_map(
             "bgcolor": "rgba(255,255,255,0.88)",
         },
     )
+
+    if parcel_layers:
+        st.caption(parcel_note + " Contornos carregados para a região inicial; "
+                   "ao navegar para fora dela, ajuste a aproximação para recarregar.")
 
     st.plotly_chart(
         figure,

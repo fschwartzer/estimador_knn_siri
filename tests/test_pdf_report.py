@@ -18,6 +18,7 @@ from vera_pdf_report import (
     TILE_SIZE_PX,
     _choose_zoom,
     _mercator_xy,
+    _fill_parcel_polygons,
     build_inference_report_pdf,
     calculate_comparable_cod,
     prepare_report_comparables,
@@ -45,6 +46,18 @@ def sample_neighbors() -> pd.DataFrame:
 
 
 class PdfReportTests(unittest.TestCase):
+    def test_solid_fill_preserves_interior_holes(self) -> None:
+        image = Image.new("RGB", (100, 100), "white")
+        parcels = {"features": [{"geometry": {"type": "Polygon", "coordinates": [
+            [[10, 10], [90, 10], [90, 90], [10, 90], [10, 10]],
+            [[30, 30], [70, 30], [70, 70], [30, 70], [30, 30]],
+        ]}}]}
+        with patch("vera_pdf_report._mercator_xy", side_effect=lambda lat, lon, zoom: (lon, lat)):
+            _fill_parcel_polygons(image, parcels, 1, 0, 0)
+        self.assertEqual(image.getpixel((20, 20)), (228, 231, 235))
+        self.assertEqual(image.getpixel((50, 50)), (255, 255, 255))
+        self.assertEqual(image.getpixel((5, 5)), (255, 255, 255))
+
     def test_peripheral_comparables_drive_dynamic_zoom(self) -> None:
         points = [
             (-30.0300, -51.2300),
@@ -117,7 +130,7 @@ class PdfReportTests(unittest.TestCase):
         fetch_tile.assert_not_called()
         render_tile.assert_not_called()
 
-    def test_map_has_deterministic_offline_fallback(self) -> None:
+    def test_map_draws_local_parcels_without_external_tiles(self) -> None:
         report = prepare_report_comparables(
             sample_neighbors(),
             latitude_column="lat",
@@ -133,7 +146,7 @@ class PdfReportTests(unittest.TestCase):
         )
         image = Image.open(BytesIO(image_bytes))
         self.assertEqual(image.size, (MAP_WIDTH_PX, MAP_HEIGHT_PX))
-        self.assertIn("indisponível", note)
+        self.assertIn("Lotes fiscais SMAMUS", note)
 
     def test_pdf_is_generated_with_map_and_comparables(self) -> None:
         pdf_bytes = build_inference_report_pdf(

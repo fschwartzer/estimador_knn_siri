@@ -10,6 +10,7 @@ PUBLICAR NA MESMA PASTA:
 8. assets/eixos_poa/ (os quatro arquivos Eixos, com hashes validados)
 9. .streamlit/config.toml e static/vera_header.png
 10. scripts/verify_local_install.py
+11. local_parcel_map.py, assets/lotes_fiscais.sqlite e assets/lotes_fiscais.json
 
 Instale previamente as dependências com --no-index e execute a verificação local.
-Mapas usam fundo neutro. Nenhum download ou fallback externo ocorre em execução.
+Mapas usam lotes fiscais locais; nenhum download ou fallback externo ocorre em execução.

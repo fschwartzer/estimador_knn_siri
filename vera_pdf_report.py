@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+from local_parcel_map import parcel_polygons, query_parcels, viewport_bounds
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -47,7 +48,7 @@ MAX_TILE_REQUESTS = 48
 MAX_VECTOR_TILE_ZOOM = 14
 MIN_MAP_ZOOM = 3.0
 MAX_MAP_ZOOM = 20.0
-CARTO_ATTRIBUTION = "VERA · mapa local sem cartografia de fundo"
+CARTO_ATTRIBUTION = "VERA · lotes fiscais SMAMUS · cartografia local"
 
 
 def _finite_number(value: Any) -> float | None:
@@ -172,7 +173,9 @@ def prepare_report_comparables(
 
 
 def _mercator_xy(latitude: float, longitude: float, zoom: float) -> tuple[float, float]:
-    latitude = float(np.clip(latitude, -85.05112878, 85.05112878))
+    latitude = float(latitude)
+    if not math.isnan(latitude):
+        latitude = max(-85.05112878, min(85.05112878, latitude))
     scale = TILE_SIZE_PX * (2**zoom)
     x = (longitude + 180.0) / 360.0 * scale
     sin_latitude = math.sin(math.radians(latitude))
@@ -460,6 +463,39 @@ def _map_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
+def _fill_parcel_polygons(image, parcels, zoom, viewport_left, viewport_top):
+    """Preenche e contorna em uma projeção por vértice, preservando os vazios."""
+    solid_draw = ImageDraw.Draw(image)
+    outline_draw = ImageDraw.Draw(image, "RGBA")
+    for polygon in parcel_polygons(parcels):
+        rings = [[(x - viewport_left, y - viewport_top)
+                  for x, y in (_mercator_xy(p[1], p[0], zoom) for p in ring)]
+                 for ring in polygon]
+        if not rings or len(rings[0]) < 3:
+            continue
+        if len(rings) == 1:
+            # Quase todos os lotes não têm vazios: desenho direto evita milhares de máscaras.
+            solid_draw.polygon(rings[0], fill=(228, 231, 235))
+            outline_draw.line(rings[0], fill=(135, 151, 162, 165), width=1)
+            continue
+        xs, ys = zip(*rings[0])
+        left, top = max(0, math.floor(min(xs))), max(0, math.floor(min(ys)))
+        right, bottom = min(image.width, math.ceil(max(xs)) + 1), min(image.height, math.ceil(max(ys)) + 1)
+        if right <= left or bottom <= top:
+            continue
+        # Uma máscara do tamanho do lote evita alocar uma imagem inteira por feição.
+        mask = Image.new("L", (right - left, bottom - top), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        for index, ring in enumerate(rings):
+            if len(ring) >= 3:
+                mask_draw.polygon([(x - left, y - top) for x, y in ring],
+                                  fill=255 if index == 0 else 0)
+        image.paste((228, 231, 235), (left, top, right, bottom), mask)
+        for ring in rings:
+            if len(ring) >= 2:
+                outline_draw.line(ring, fill=(135, 151, 162, 165), width=1)
+
+
 def render_comparables_map_image(
     comparables: pd.DataFrame,
     *,
@@ -491,6 +527,13 @@ def render_comparables_map_image(
     image = _fallback_map(MAP_WIDTH_PX, MAP_HEIGHT_PX)
     # fetch_tiles é mantido por compatibilidade, mas não habilita rede.
     draw = ImageDraw.Draw(image, "RGBA")
+    scale = TILE_SIZE_PX * 2 ** display_zoom
+    map_center_lon = center_x / scale * 360 - 180
+    map_center_lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * center_y / scale))))
+    parcels, parcel_note = query_parcels(viewport_bounds(
+        map_center_lat, map_center_lon, display_zoom, MAP_WIDTH_PX, MAP_HEIGHT_PX,
+    ))
+    _fill_parcel_polygons(image, parcels, display_zoom, viewport_left, viewport_top)
     marker_font = _map_font(21, bold=True)
     legend_font = _map_font(17)
     attribution_font = _map_font(14)
@@ -588,7 +631,7 @@ def render_comparables_map_image(
 
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
-    source_note = "Modo local obrigatório: grade neutra; mapa-base externo indisponível por política."
+    source_note = "Modo local obrigatório. " + parcel_note
     return output.getvalue(), source_note
 
 

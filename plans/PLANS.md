@@ -138,3 +138,29 @@ Executar sem internet no servidor e navegador, com base e dependências instalad
 - Instalação limpa com --no-index e base geográfica íntegra aprovada.
 - Pacote local Windows x64/Python 3.14 preparado com os wheels.
 - Homologação do tráfego do navegador na rede corporativa ainda depende da infraestrutura final.
+
+# Lotes fiscais como suporte visual — 23/10/2026
+
+1. [concluído] Preparar base local compacta, com origem, hash e CRS documentados.
+2. [concluído] Integrar consulta espacial e contornos nos mapas da tela e PDF.
+3. [concluído] Validar seleção por região, ausência de rede, desempenho e aparência.
+
+Hipótese: suporte estritamente visual, sem alteração de entradas, distâncias, pesos
+ou seleção de comparáveis. Não cria features nem utiliza preços; sem novo leakage
+ou overfitting. COD, PRD e regressividade não se alteram pelo desenho cartográfico.
+Consulta por retângulo em longitude/latitude; não mede distâncias nem atribui
+lote a ponto. Cobertura cadastral e posição geocodificada podem divergir.
+
+Verificação: prévia PNG do mapa PDF inspecionada; GeoJSON embutido no Plotly
+validado pelo esquema e por teste de integração sem rede. Consulta real de
+5.681 lotes em 0,271 s nesta máquina (medição pontual, sem garantia de SLA).
+Base preparada: 93.786.112 bytes, 283.290 polígonos, CRS confirmado no catálogo
+da extração com mesmo SHA-256. Prévia interativa no navegador não homologada.
+
+## Preenchimento cinza claro dos lotes — concluído
+- Tela: mesma camada GeoJSON, preenchimento sólido #E4E7EB e contorno.
+- PDF: preenchimento com vazios preservados; projeção única por vértice.
+- Comparação alternada em cinco execuções, recorte de 6.321 lotes: mediana
+  anterior 2,298 s e preenchida 0,965 s nesta máquina, sem garantia de SLA.
+- Sem aumento da base ou duplicação da geometria enviada à tela. Sem efeito
+  sobre estimativas, seleção, pesos, COD, PRD ou regressividade.

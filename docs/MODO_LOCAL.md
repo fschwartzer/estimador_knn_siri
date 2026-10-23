@@ -3,6 +3,8 @@
 A aplicação opera obrigatoriamente sem serviços externos. O servidor processa
 as planilhas e o navegador acessa apenas o servidor corporativo. Não existe
 configuração para reativar Nominatim, downloads de base ou mapas externos.
+Os lotes fiscais são desenhados a partir da base instalada `assets/lotes_fiscais.sqlite`,
+com manifesto `assets/lotes_fiscais.json` e módulo `local_parcel_map.py`.
 Os parâmetros antigos `fetch_tiles` e `fetch_map_tiles` permanecem aceitos para
 compatibilidade e não habilitam rede, mesmo quando verdadeiros.
 
@@ -51,7 +53,9 @@ infraestrutura contra comportamentos futuros de dependências.
 
 ## Comportamento e limites
 
-- Não há cartografia de ruas: mapas preservam pontos, enquadramento e comparáveis.
+- Mapas mostram lotes em cinza claro sólido, com contornos e vazios internos
+  preservados, mantendo pontos e comparáveis destacados.
+  A tela permite selecionar lotes fiscais ou fundo neutro. Não há tiles externos.
 - Base ausente ou com hash inválido gera mensagem explícita; não ocorre download.
 - Endereço não resolvido conserva o motivo da falha. Informe coordenadas ou escolha
   explicitamente ignorar localização; o sistema não troca sozinho para busca online.
@@ -61,3 +65,32 @@ infraestrutura contra comportamentos futuros de dependências.
   regressividade: não constitui evidência de melhora ou piora sem avaliação própria.
 
 Verificação reproduzível: `python -m unittest discover -s tests -v`.
+
+## Base visual de lotes fiscais
+
+Fonte: extração SMAMUS `01_PUBLICACOES/dmweb_lotes_fiscais/FeatureServer/0`,
+coletada em 20/10/2026. O catálogo da extração confirma EPSG:4326 e o hash
+`37b5bd9bc3b7df6e9c21271c8e43b963a1570d6e0b59c96eb280cedd427d8a33`.
+São 283.290 polígonos, incluindo multipolígonos e anéis internos. As coordenadas
+são preservadas integralmente; os atributos cadastrais foram removidos da cópia
+visual. O original no Playground permanece intacto. Coleta não comprova vigência
+nem cobertura completa; os contornos não certificam a inscrição dos pontos.
+
+O índice SQLite/RTree consulta retângulos em graus WGS84, sem medir distância,
+intersectar alvos ou criar variáveis do modelo. O custo de leitura depende do
+número de lotes do recorte, limitado a 20 mil. Acima disso, não se mostra um
+subconjunto arbitrário: há aviso explícito para reduzir a região. No mapa
+interativo use “Aproximação cartográfica”; os contornos são carregados no servidor
+para a região dos pontos e precisam ser recarregados ao navegar para fora dela.
+No PDF, o recorte acompanha o enquadramento dos pontos. Base ausente/corrompida
+ou região sem lotes resulta em pontos sobre fundo neutro e motivo explícito.
+
+Repreparação offline a partir do GeoJSON original, em um destino novo:
+
+```powershell
+python scripts/prepare_parcel_map.py CAMINHO_DO_GEOJSON assets/lotes_fiscais.sqlite
+```
+
+A preparação usa apenas a biblioteca padrão e conserva o hash da fonte e o hash
+da base preparada no manifesto. O verificador de instalação confere a integridade.
+Não há influência sobre COD, PRD, regressividade, pesos ou seleção do KNN.
