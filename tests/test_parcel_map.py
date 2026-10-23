@@ -38,6 +38,7 @@ class ParcelMapTests(unittest.TestCase):
         with patch.object(socket.socket, "connect", side_effect=AssertionError("Rede proibida")):
             namespace["render_comparables_map"](neighbors, "lat", "lon", -30.03, -51.23)
         figure = st.plotly_chart.call_args.args[0]
+        self.assertIsNone(st.plotly_chart.call_args.kwargs["theme"])
         self.assertEqual(figure.layout.map.style, "white-bg")
         layer = figure.layout.map.layers[0]
         self.assertEqual(layer.below, "traces")

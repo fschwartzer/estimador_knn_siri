@@ -1861,6 +1861,8 @@ def render_comparables_map(
 
     st.plotly_chart(
         figure,
+        # Preserva o estilo nativo MapLibre; o tema automático interfere na camada GeoJSON.
+        theme=None,
         use_container_width=True,
         config={
             "scrollZoom": True,

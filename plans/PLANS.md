@@ -179,3 +179,17 @@ Verificação: regressão falhou antes do ajuste e passou depois. 56 testes pass
 com rede bloqueada. Recorte de 157.035 lotes carregado em 7,732 s; PDF com
 93.044 lotes renderizado e inspecionado em 9,93 s. Tempos pontuais nesta máquina;
 recortes maiores consomem mais memória e tempo no servidor e no navegador.
+
+## Correção da camada fiscal no Streamlit — 23/10/2026
+- Causa reproduzida no navegador: a mesma figura com lotes aparecia no HTML
+  independente e ficava vazia no st.plotly_chart com tema automático.
+- Hipótese confirmada: theme=None somente nesse gráfico restaura lotes e pontos.
+- [concluído] Teste de regressão falhou antes da correção; ajuste restrito à tela.
+- [concluído] Validar a tela real com região ampla e executar a suíte sem rede.
+- PDF, geometrias e cálculo de estimativas permanecem preservados. Sem efeito
+  sobre seleção, pesos, COD, PRD, regressividade, leakage ou overfitting.
+
+Conferência no navegador do Streamlit: 139.018 lotes visíveis, zoom funcional e
+console sem erros. Captura em tmp/mapa_aplicativo_corrigido.png. 56 testes
+aprovados com conexões bloqueadas. Correção de uma opção de renderização, sem
+alterar o relatório PDF, dados geográficos ou núcleo de estimativas.
