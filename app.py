@@ -22,7 +22,7 @@ from vera_pdf_report import (
 )
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.19.0"
+APP_EDITION = "LITE 1.19.1"
 CORE_VERSION = "6.12.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -433,6 +433,7 @@ div[data-testid="stDataFrame"] {
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+st.caption("Modo local obrigatório · sem consultas externas · mapas com fundo neutro")
 
 
 def money_br(value: float, decimals: int = 2) -> str:
@@ -1223,26 +1224,15 @@ def cached_street_axis_index():
 def geocode_queries(
     queries: tuple[str, ...],
 ) -> dict[str, dict[str, object]]:
-    """Usa primeiro o eixo de Porto Alegre e depois o fallback Nominatim."""
-    from geopy.extra.rate_limiter import RateLimiter
-    from geopy.geocoders import Nominatim
-
+    """Geocodifica somente na base local; falhas nunca consultam a internet."""
     try:
         street_axis_index = cached_street_axis_index()
-    except Exception:
+        axis_error = ""
+    except (FileNotFoundError, ValueError, OSError) as exc:
         street_axis_index = None
+        axis_error = str(exc)
+        st.error(axis_error)
 
-    geocoder = Nominatim(
-        user_agent="vera-estimador-knn-siri/1.18",
-        timeout=10,
-    )
-    geocode = RateLimiter(
-        geocoder.geocode,
-        min_delay_seconds=1.05,
-        max_retries=1,
-        error_wait_seconds=2.0,
-        swallow_exceptions=True,
-    )
     result: dict[str, dict[str, object]] = {}
     for query in queries:
         street, number = parse_street_and_number(query)
@@ -1274,39 +1264,18 @@ def geocode_queries(
             }
             continue
 
-        location = geocode(query, exactly_one=True, language="pt-BR")
-        if location is None:
-            result[query] = {
-                "latitude": None,
-                "longitude": None,
-                "method": "não localizado",
-                "matched_street": (
-                    local_result.matched_street if local_result else ""
-                ),
-                "similarity_score": (
-                    local_result.similarity_score if local_result else 0.0
-                ),
-                "cdlog": local_result.cdlog if local_result else None,
-                "failure_reason": (
-                    local_result.failure_reason
-                    if local_result
-                    else "Endereço não localizado"
-                ),
-            }
-        else:
-            result[query] = {
-                "latitude": float(location.latitude),
-                "longitude": float(location.longitude),
-                "method": "nominatim",
-                "matched_street": (
-                    local_result.matched_street if local_result else ""
-                ),
-                "similarity_score": (
-                    local_result.similarity_score if local_result else 0.0
-                ),
-                "cdlog": local_result.cdlog if local_result else None,
-                "failure_reason": "",
-            }
+        result[query] = {
+            "latitude": None,
+            "longitude": None,
+            "method": "não localizado",
+            "matched_street": local_result.matched_street if local_result else "",
+            "similarity_score": local_result.similarity_score if local_result else 0.0,
+            "cdlog": local_result.cdlog if local_result else None,
+            "failure_reason": axis_error or (
+                local_result.failure_reason if local_result else
+                "Endereço sem número ou fora da cobertura local de Porto Alegre"
+            ),
+        }
     return result
 
 
@@ -1710,8 +1679,6 @@ def render_comparables_map(
     zoom = calculate_map_zoom(all_points)
 
     style_options = {
-        "Ruas — OpenStreetMap": "open-street-map",
-        "Claro — Carto Positron": "carto-positron",
         "Sem mapa-base": "white-bg",
     }
     style_label = st.radio(
@@ -1720,8 +1687,8 @@ def render_comparables_map(
         horizontal=True,
         key="estimador_knn_siri_map_style",
         help=(
-            "Use 'Sem mapa-base' caso a rede ou o navegador bloqueie os "
-            "tiles externos. A navegação e os pontos continuarão interativos."
+            "Modo local obrigatório: fundo neutro, sem consultas externas. "
+            "A navegação e os pontos continuam interativos."
         ),
     )
     map_style = style_options[style_label]
@@ -2145,7 +2112,7 @@ if sample_coordinate_count < 2:
         help=(
             "Em Porto Alegre, a VERA tenta primeiro a correspondência do "
             "logradouro e a interpolação do número no eixo viário oficial. "
-            "Depois usa geocodificação online como fallback."
+            "Sem consulta externa. Endereços não resolvidos exigem coordenadas informadas."
         ),
     )
 
@@ -2175,8 +2142,7 @@ if sample_coordinate_count < 2:
             step=1,
             help=(
                 "A interpolação no eixo viário de Porto Alegre é local e rápida. "
-                "Somente os fallbacks online respeitam intervalo entre "
-                "requisições. Os resultados ficam em cache por 30 dias."
+                "Sem consultas externas. Os resultados ficam em cache por 30 dias."
             ),
         )
         if unique_address_count:
@@ -2252,9 +2218,7 @@ if sample_coordinate_count < 2:
                 f"**{sample_geocoding_diagnostics['rows']}** registros com "
                 "coordenadas obtidas — "
                 f"**{sample_geocoding_diagnostics['axis_rows']}** pelo eixo "
-                "viário de Porto Alegre e "
-                f"**{sample_geocoding_diagnostics['nominatim_rows']}** pelo "
-                "fallback online e "
+                "viário local de Porto Alegre e "
                 f"**{sample_geocoding_diagnostics.get('original_coordinate_rows', 0)}** "
                 "já existentes na planilha."
             )

@@ -111,3 +111,23 @@ usando a extração fornecida e preservando as interfaces do aplicativo.
   de sensibilidade, não confirmação independente nem recalibração de K/pesos.
 - Não declarar ganho de equidade ou COD/PRD antes de medir; não escolher
   parâmetros usando preço do avaliando ou informação futura.
+
+
+# Modo local obrigatório — 23/10/2026
+
+## Objetivo
+Executar sem internet no servidor e navegador, com base e dependências instaladas.
+
+## Execução
+1. [concluído] Auditar saídas: eixo viário, Nominatim, mapas interativo/PDF.
+2. [concluído] Remover downloads/fallbacks; incluir eixo com hashes e fundo neutro.
+3. [concluído] Preparar instalação offline e testes com rede bloqueada.
+4. [em andamento] Revisar diff, validar e publicar branch/PR no GitHub.
+
+## Restrições e hipótese
+- Núcleo, pesos, seleção e interfaces de notebooks permanecem compatíveis.
+- Hipótese: mesmas entradas com coordenadas produzem os mesmos resultados.
+- Sem ajuste de modelo ou parâmetros: nenhum novo risco de overfitting ou leakage.
+- Cobertura menor sem Nominatim pode alterar seleção da amostra e viés espacial;
+  não alegar melhora em COD, PRD ou regressividade. Comparar em base reservada
+  antes de usar populações com cobertura diferente.

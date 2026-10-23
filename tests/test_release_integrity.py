@@ -27,7 +27,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_app_loads_the_published_core_and_schema(self) -> None:
         constants = module_constants(ROOT / "app.py")
 
-        self.assertEqual(constants["APP_EDITION"], "LITE 1.19.0")
+        self.assertEqual(constants["APP_EDITION"], "LITE 1.19.1")
         self.assertEqual(constants["CORE_VERSION"], "6.12.0")
         self.assertEqual(
             constants["CORE_MODULE_FILE"],
