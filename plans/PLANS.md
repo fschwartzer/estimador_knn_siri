@@ -193,3 +193,38 @@ Conferência no navegador do Streamlit: 139.018 lotes visíveis, zoom funcional 
 console sem erros. Captura em tmp/mapa_aplicativo_corrigido.png. 56 testes
 aprovados com conexões bloqueadas. Correção de uma opção de renderização, sem
 alterar o relatório PDF, dados geográficos ou núcleo de estimativas.
+
+# Retorno a CARTO e Nominatim com Eixos locais — 27/10/2026
+
+1. [concluído] Recuperar comportamento anterior de mapas e geocodificação.
+2. [concluído] Manter Eixos instalados com hashes; nenhum download do Hugging Face.
+3. [concluído] Atualizar testes, distribuição e documentação; validar UI/PDF/fallback.
+4. [pendente] Publicar e incorporar no GitHub após validação.
+
+Decisão do usuário: mapas externos CARTO (e OSM como alternativa) e fallback
+Nominatim novamente permitidos; não é mais modo totalmente offline obrigatório.
+Geocodificação prioriza o shapefile local de Porto Alegre. Base ausente/corrompida
+produz aviso, sem download automático. Eixos mantêm CRS TM-POA e transformação
+para WGS84. Lotes fiscais não participam mais dos mapas nem da instalação exigida.
+Núcleo e interfaces de notebooks preservados. Hipótese: cálculo idêntico para
+coordenadas iguais; cobertura recuperada pelo Nominatim pode alterar comparáveis
+e, portanto, COD/PRD/regressividade. Não há recalibração, tuning ou nova feature;
+sem novo overfitting/leakage, mas persistem riscos de erro de geocodificação e viés
+espacial. Não alegar melhora de métricas sem medição independente.
+
+## Reconhecimento da exportação SIRI de 27/10/2026
+- Cabeçalhos camelCase de 22.475 linhas e 90 colunas; arquivo original preservado.
+- Escolhas explícitas: valorGuiaTotalDeclarado e guiaAreaTerrTransmitida nas guias.
+- Adaptador cria aliases por linha, sem agregações da amostra nem ajuste de modelo.
+- Endereço e coordenadas preservam pares de origem; datas não viram ano construtivo.
+- Validar aplicação, metadados de deduplicação e ausência de fallback fiscal para
+  preços/áreas faltantes. Transmissões parciais exigem revisão de comparabilidade.
+- Testes usam dados sintéticos; arquivo particular fica em tmp/ fora do Git.
+
+Validação final: 63 testes aprovados com serviços externos simulados e conexões
+reais bloqueadas; consultas públicas reais CARTO/Nominatim responderam. PDF
+CARTO inspecionado e mapa interativo CARTO conferido no navegador sem erros.
+A exportação completa (22.475 linhas/90 colunas) foi carregada na interface
+AppTest, sem exceções ou erros de entrada e sem transmitir dados da planilha.
+16.467 pares de coordenadas válidos e nenhum campo obrigatório faltante; as
+90 colunas originais permaneceram idênticas. Dados particulares apenas em tmp/.

@@ -866,6 +866,8 @@ def _canonical_information_type(value: object) -> str:
 def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
     """Cria colunas efetivas sem alterar as colunas originais do arquivo."""
     data = df.copy()
+    from siri_export_adapter import adapt_siri_export
+    export_added, export_notes = adapt_siri_export(data)
     columns = [str(column) for column in data.columns]
     data.columns = columns
 
@@ -891,10 +893,10 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
         "siat_latitude",
         "siat_longitude",
     }
-    siri_detected = siri_markers.issubset(set(columns))
+    siri_detected = bool(export_notes) or siri_markers.issubset(set(columns))
 
-    added: list[str] = []
-    notes: list[str] = []
+    added: list[str] = list(export_added)
+    notes: list[str] = list(export_notes)
 
     if source_type_column:
         information_type = (
@@ -1084,6 +1086,9 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
         data[DERIVED_AREA_LOTE] = lot_series
         added.append(DERIVED_AREA_LOTE)
         notes.append(
+            "Exportação SIRI: área territorial conforme __regra_area_exportacao; "
+            "Guias usam a área efetivamente transmitida."
+            if export_notes else
             "Área do lote combinada: prioriza a área anunciada nas ofertas e "
             "a área SIAT nas Guias ITBI, exceto terrenos em condomínio, que "
             "exigem a área da unidade negociada."
@@ -1201,6 +1206,8 @@ def enrich_known_schemas(df: pd.DataFrame) -> tuple[pd.DataFrame, SchemaInfo]:
         data[DERIVED_TESTADA] = frontage_series
         added.append(DERIVED_TESTADA)
         notes.append(
+            "Exportação SIRI: testada do lote fiscal PMI/SIAT."
+            if export_notes else
             "Testada combinada: prioriza a testada do anúncio nas ofertas e "
             "a testada SIAT nas Guias ITBI."
         )
