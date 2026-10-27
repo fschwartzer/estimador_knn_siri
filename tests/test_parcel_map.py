@@ -20,7 +20,7 @@ class ParcelMapTests(unittest.TestCase):
         self.assertGreater(len(parcels["features"]), 20000)
         self.assertNotIn("Região ampla", note)
 
-    def test_interactive_map_embeds_local_geojson_below_the_points(self):
+    def test_interactive_map_restores_carto_without_parcel_layer(self):
         import numpy as np
         import pandas as pd
         import plotly.graph_objects as go
@@ -29,7 +29,7 @@ class ParcelMapTests(unittest.TestCase):
         tree = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))
         functions = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
         st = MagicMock()
-        st.radio.return_value = "Lotes fiscais locais"
+        st.radio.return_value = "Claro — Carto Positron"
         st.select_slider.return_value = 0
         namespace = {"np": np, "pd": pd, "go": go, "st": st, "query_parcels": query_parcels}
         exec(compile(ast.Module(body=functions, type_ignores=[]), "app.py", "exec"), namespace)
@@ -39,13 +39,8 @@ class ParcelMapTests(unittest.TestCase):
             namespace["render_comparables_map"](neighbors, "lat", "lon", -30.03, -51.23)
         figure = st.plotly_chart.call_args.args[0]
         self.assertIsNone(st.plotly_chart.call_args.kwargs["theme"])
-        self.assertEqual(figure.layout.map.style, "white-bg")
-        layer = figure.layout.map.layers[0]
-        self.assertEqual(layer.below, "traces")
-        self.assertEqual(layer.sourcetype, "geojson")
-        self.assertEqual(layer.type, "fill")
-        self.assertEqual(layer.opacity, 1)
-        self.assertTrue(layer.source["features"])
+        self.assertEqual(figure.layout.map.style, "carto-positron")
+        self.assertEqual(len(figure.layout.map.layers), 0)
         self.assertGreaterEqual(len(figure.data), 3)
 
     def test_bbox_selection_preserves_polygons_holes_and_coordinates(self):

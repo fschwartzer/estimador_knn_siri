@@ -27,7 +27,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_app_loads_the_published_core_and_schema(self) -> None:
         constants = module_constants(ROOT / "app.py")
 
-        self.assertEqual(constants["APP_EDITION"], "LITE 1.19.1")
+        self.assertEqual(constants["APP_EDITION"], "LITE 1.19.2")
         self.assertEqual(constants["CORE_VERSION"], "6.12.0")
         self.assertEqual(
             constants["CORE_MODULE_FILE"],
@@ -49,6 +49,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
         for dependency in ("geopy", "pyproj", "pyshp", "rapidfuzz"):
             self.assertIn(dependency, requirements.casefold())
         self.assertTrue((ROOT / "geocodificador_porto_alegre.py").is_file())
+        self.assertTrue((ROOT / "siri_export_adapter.py").is_file())
         self.assertTrue(hasattr(schema, "DERIVED_TIPO_INFORMACAO"))
 
     def test_pdf_runtime_is_published_with_its_dependencies(self) -> None:

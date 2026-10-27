@@ -1,5 +1,16 @@
 # Alterações
 
+## 1.19.2 — 2026-10-27
+
+- Restaurados mapas CARTO na tela e no PDF e fallback de endereços Nominatim.
+- Eixos de Porto Alegre continuam incorporados ao VERA, validados por SHA-256,
+  sem comunicação com Hugging Face nem download em execução.
+- Lotes fiscais deixam de compor os mapas e a instalação obrigatória.
+- Reconhecida a nova exportação SIRI em camelCase, preservando colunas originais.
+  Guias usam valor declarado e área transmitida; pares de coordenadas e origem
+  de preços/áreas têm rastreabilidade.
+- Núcleo e parâmetros de estimativa preservados; documentação ajustada aos serviços online.
+
 ## 1.19.1 — 2026-10-23
 
 - Modo local obrigatório: remoção do fallback Nominatim e de downloads em execução.

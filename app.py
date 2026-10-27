@@ -16,14 +16,13 @@ from geocodificador_porto_alegre import (
     load_street_axis_index,
     parse_street_and_number,
 )
-from local_parcel_map import query_parcels
 from vera_pdf_report import (
     build_inference_report_pdf,
     calculate_comparable_cod,
 )
 
 APP_NAME = "estimador_knn_siri"
-APP_EDITION = "LITE 1.19.1"
+APP_EDITION = "LITE 1.19.2"
 CORE_VERSION = "6.12.0"
 
 # Parâmetros internos: não ficam expostos ao usuário da edição LITE.
@@ -434,7 +433,7 @@ div[data-testid="stDataFrame"] {
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-st.caption("Modo local obrigatório · sem consultas externas · cartografia fiscal local")
+st.caption("Geocodificação pelos Eixos locais · fallback Nominatim · mapas CARTO")
 
 
 def money_br(value: float, decimals: int = 2) -> str:
@@ -1225,15 +1224,27 @@ def cached_street_axis_index():
 def geocode_queries(
     queries: tuple[str, ...],
 ) -> dict[str, dict[str, object]]:
-    """Geocodifica somente na base local; falhas nunca consultam a internet."""
+    """Usa primeiro o eixo de Porto Alegre e depois o fallback Nominatim."""
+    from geopy.extra.rate_limiter import RateLimiter
+    from geopy.geocoders import Nominatim
+
     try:
         street_axis_index = cached_street_axis_index()
-        axis_error = ""
     except (FileNotFoundError, ValueError, OSError) as exc:
         street_axis_index = None
-        axis_error = str(exc)
-        st.error(axis_error)
+        st.warning(f"Base viária local indisponível: {exc}. Será usado o Nominatim.")
 
+    geocoder = Nominatim(
+        user_agent="vera-estimador-knn-siri/1.19.2",
+        timeout=10,
+    )
+    geocode = RateLimiter(
+        geocoder.geocode,
+        min_delay_seconds=1.05,
+        max_retries=1,
+        error_wait_seconds=2.0,
+        swallow_exceptions=True,
+    )
     result: dict[str, dict[str, object]] = {}
     for query in queries:
         street, number = parse_street_and_number(query)
@@ -1265,18 +1276,39 @@ def geocode_queries(
             }
             continue
 
-        result[query] = {
-            "latitude": None,
-            "longitude": None,
-            "method": "não localizado",
-            "matched_street": local_result.matched_street if local_result else "",
-            "similarity_score": local_result.similarity_score if local_result else 0.0,
-            "cdlog": local_result.cdlog if local_result else None,
-            "failure_reason": axis_error or (
-                local_result.failure_reason if local_result else
-                "Endereço sem número ou fora da cobertura local de Porto Alegre"
-            ),
-        }
+        location = geocode(query, exactly_one=True, language="pt-BR")
+        if location is None:
+            result[query] = {
+                "latitude": None,
+                "longitude": None,
+                "method": "não localizado",
+                "matched_street": (
+                    local_result.matched_street if local_result else ""
+                ),
+                "similarity_score": (
+                    local_result.similarity_score if local_result else 0.0
+                ),
+                "cdlog": local_result.cdlog if local_result else None,
+                "failure_reason": (
+                    local_result.failure_reason
+                    if local_result
+                    else "Endereço não localizado"
+                ),
+            }
+        else:
+            result[query] = {
+                "latitude": float(location.latitude),
+                "longitude": float(location.longitude),
+                "method": "nominatim",
+                "matched_street": (
+                    local_result.matched_street if local_result else ""
+                ),
+                "similarity_score": (
+                    local_result.similarity_score if local_result else 0.0
+                ),
+                "cdlog": local_result.cdlog if local_result else None,
+                "failure_reason": "",
+            }
     return result
 
 
@@ -1680,44 +1712,21 @@ def render_comparables_map(
     zoom = calculate_map_zoom(all_points)
 
     style_options = {
-        "Lotes fiscais locais": "white-bg",
+        "Claro — Carto Positron": "carto-positron",
+        "Ruas — OpenStreetMap": "open-street-map",
         "Sem mapa-base": "white-bg",
     }
     style_label = st.radio(
         "Mapa-base",
         list(style_options),
         horizontal=True,
-        key="estimador_knn_siri_map_style",
+        key="estimador_knn_siri_map_style_carto_v1192",
         help=(
-            "Modo local obrigatório: lotes fiscais instalados, sem consultas externas. "
-            "A navegação e os pontos continuam interativos."
+            "Use 'Sem mapa-base' caso a rede ou o navegador bloqueie os "
+            "tiles externos. A navegação e os pontos continuarão interativos."
         ),
     )
     map_style = style_options[style_label]
-
-    parcel_layers = []
-    parcel_note = ""
-    if style_label == "Lotes fiscais locais":
-        detail = st.select_slider(
-            "Aproximação cartográfica", options=[0, 1, 2, 3, 4], value=0,
-            help="Ajusta o enquadramento visual. Todos os lotes da região consultada são carregados, sem corte por quantidade.",
-            key="parcel_detail",
-        )
-        zoom += detail
-        # Recorte de apresentação em torno dos pontos, ampliado em 50% de cada lado.
-        # O zoom do navegador não altera a seleção nem as distâncias do estimador.
-        half_lon = max(float(all_points["longitude"].max() - all_points["longitude"].min()), 0.004) / 2 ** detail
-        half_lat = max(float(all_points["latitude"].max() - all_points["latitude"].min()), 0.004) / 2 ** detail
-        parcels, parcel_note = query_parcels((
-            max(-180, center_longitude - half_lon), max(-90, center_latitude - half_lat),
-            min(180, center_longitude + half_lon), min(90, center_latitude + half_lat),
-        ))
-        if parcels["features"]:
-            parcel_layers = [{"sourcetype": "geojson", "source": parcels,
-                              "type": "fill", "color": "#E4E7EB", "opacity": 1,
-                              "fill": {"outlinecolor": "#9AA9B2"}, "below": "traces"}]
-        else:
-            st.info(parcel_note)
 
     line_lats: list[float | None] = []
     line_lons: list[float | None] = []
@@ -1835,7 +1844,6 @@ def render_comparables_map(
         paper_bgcolor="rgba(0,0,0,0)",
         map={
             "style": map_style,
-            "layers": parcel_layers,
             "center": {
                 "lat": center_latitude,
                 "lon": center_longitude,
@@ -1855,13 +1863,8 @@ def render_comparables_map(
         },
     )
 
-    if parcel_layers:
-        st.caption(parcel_note + " Contornos carregados para a região inicial; "
-                   "ao navegar para fora dela, ajuste a aproximação para recarregar.")
-
     st.plotly_chart(
         figure,
-        # Preserva o estilo nativo MapLibre; o tema automático interfere na camada GeoJSON.
         theme=None,
         use_container_width=True,
         config={
@@ -2145,7 +2148,7 @@ if sample_coordinate_count < 2:
         help=(
             "Em Porto Alegre, a VERA tenta primeiro a correspondência do "
             "logradouro e a interpolação do número no eixo viário oficial. "
-            "Sem consulta externa. Endereços não resolvidos exigem coordenadas informadas."
+            "Quando necessário, consulta o Nominatim online como fallback."
         ),
     )
 
@@ -2175,7 +2178,8 @@ if sample_coordinate_count < 2:
             step=1,
             help=(
                 "A interpolação no eixo viário de Porto Alegre é local e rápida. "
-                "Sem consultas externas. Os resultados ficam em cache por 30 dias."
+                "O fallback online respeita intervalo entre requisições. "
+                "Os resultados ficam em cache por 30 dias."
             ),
         )
         if unique_address_count:
@@ -2251,7 +2255,9 @@ if sample_coordinate_count < 2:
                 f"**{sample_geocoding_diagnostics['rows']}** registros com "
                 "coordenadas obtidas — "
                 f"**{sample_geocoding_diagnostics['axis_rows']}** pelo eixo "
-                "viário local de Porto Alegre e "
+                "viário local de Porto Alegre, "
+                f"**{sample_geocoding_diagnostics['nominatim_rows']}** pelo "
+                "Nominatim e "
                 f"**{sample_geocoding_diagnostics.get('original_coordinate_rows', 0)}** "
                 "já existentes na planilha."
             )
@@ -2802,7 +2808,8 @@ if calculate:
             and target_ano_construcao is not None
         )
 
-        original_columns = [str(column) for column in original_df.columns]
+        # Inclui os aliases auditáveis da exportação SIRI, sem perder os campos originais.
+        original_columns = [str(column) for column in df.columns]
         duplicate_date_column = choose_existing(
             original_columns,
             [

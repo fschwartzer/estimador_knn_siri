@@ -66,7 +66,7 @@ def ensure_axis_files(cache_directory: Path | None = None) -> Path:
         destination = directory / filename
         if not destination.is_file():
             raise FileNotFoundError(
-                f"Modo local obrigatório: instale a base geográfica em {directory}. "
+                f"Base viária local: instale a base geográfica em {directory}. "
                 f"Arquivo ausente: {filename}. Nenhum download será realizado."
             )
         actual_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
@@ -83,7 +83,7 @@ def _field_value(record: Any, fields: dict[str, int], name: str) -> Any:
 def load_street_axis_index(
     cache_directory: Path | None = None,
 ) -> StreetAxisIndex:
-    """Carrega e indexa o eixo viário usado pelo Space Geocode."""
+    """Carrega e indexa o eixo viário instalado junto do VERA."""
     import shapefile
     from pyproj import CRS, Transformer
 

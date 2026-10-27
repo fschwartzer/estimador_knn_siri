@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from html import escape
 from io import BytesIO
+import gzip
 import math
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
-from local_parcel_map import parcel_polygons, query_parcels, viewport_bounds
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -48,7 +50,11 @@ MAX_TILE_REQUESTS = 48
 MAX_VECTOR_TILE_ZOOM = 14
 MIN_MAP_ZOOM = 3.0
 MAX_MAP_ZOOM = 20.0
-CARTO_ATTRIBUTION = "VERA · lotes fiscais SMAMUS · cartografia local"
+CARTO_ATTRIBUTION = "© OpenStreetMap contributors · © CARTO"
+CARTO_VECTOR_TILE_URL = (
+    "https://tiles-{subdomain}.basemaps.cartocdn.com/"
+    "vectortiles/carto.streets/v1/{zoom}/{x}/{y}.mvt"
+)
 
 
 def _finite_number(value: Any) -> float | None:
@@ -173,9 +179,7 @@ def prepare_report_comparables(
 
 
 def _mercator_xy(latitude: float, longitude: float, zoom: float) -> tuple[float, float]:
-    latitude = float(latitude)
-    if not math.isnan(latitude):
-        latitude = max(-85.05112878, min(85.05112878, latitude))
+    latitude = float(np.clip(latitude, -85.05112878, 85.05112878))
     scale = TILE_SIZE_PX * (2**zoom)
     x = (longitude + 180.0) / 360.0 * scale
     sin_latitude = math.sin(math.radians(latitude))
@@ -215,8 +219,27 @@ def _fetch_vector_tile(
     tile_x: int,
     tile_y: int,
 ) -> tuple[int, int, bytes | None]:
-    # Interface preservada para notebooks; acesso externo removido definitivamente.
-    return tile_x, tile_y, None
+    max_index = 2**zoom
+    wrapped_x = tile_x % max_index
+    if tile_y < 0 or tile_y >= max_index:
+        return tile_x, tile_y, None
+    subdomain = "abcd"[(wrapped_x + tile_y) % 4]
+    url = CARTO_VECTOR_TILE_URL.format(
+        subdomain=subdomain,
+        zoom=zoom,
+        x=wrapped_x,
+        y=tile_y,
+    )
+    request = Request(url, headers={"User-Agent": "VERA/1.19 PDF report"})
+    try:
+        with urlopen(request, timeout=4.0) as response:
+            tile = response.read()
+            encoding = response.headers.get("Content-Encoding", "").casefold()
+        if encoding == "gzip" or tile.startswith(b"\x1f\x8b"):
+            tile = gzip.decompress(tile)
+        return tile_x, tile_y, tile
+    except Exception:
+        return tile_x, tile_y, None
 
 
 def _fallback_map(width: int, height: int) -> Image.Image:
@@ -463,47 +486,14 @@ def _map_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _fill_parcel_polygons(image, parcels, zoom, viewport_left, viewport_top):
-    """Preenche e contorna em uma projeção por vértice, preservando os vazios."""
-    solid_draw = ImageDraw.Draw(image)
-    outline_draw = ImageDraw.Draw(image, "RGBA")
-    for polygon in parcel_polygons(parcels):
-        rings = [[(x - viewport_left, y - viewport_top)
-                  for x, y in (_mercator_xy(p[1], p[0], zoom) for p in ring)]
-                 for ring in polygon]
-        if not rings or len(rings[0]) < 3:
-            continue
-        if len(rings) == 1:
-            # Quase todos os lotes não têm vazios: desenho direto evita milhares de máscaras.
-            solid_draw.polygon(rings[0], fill=(228, 231, 235))
-            outline_draw.line(rings[0], fill=(135, 151, 162, 165), width=1)
-            continue
-        xs, ys = zip(*rings[0])
-        left, top = max(0, math.floor(min(xs))), max(0, math.floor(min(ys)))
-        right, bottom = min(image.width, math.ceil(max(xs)) + 1), min(image.height, math.ceil(max(ys)) + 1)
-        if right <= left or bottom <= top:
-            continue
-        # Uma máscara do tamanho do lote evita alocar uma imagem inteira por feição.
-        mask = Image.new("L", (right - left, bottom - top), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        for index, ring in enumerate(rings):
-            if len(ring) >= 3:
-                mask_draw.polygon([(x - left, y - top) for x, y in ring],
-                                  fill=255 if index == 0 else 0)
-        image.paste((228, 231, 235), (left, top, right, bottom), mask)
-        for ring in rings:
-            if len(ring) >= 2:
-                outline_draw.line(ring, fill=(135, 151, 162, 165), width=1)
-
-
 def render_comparables_map_image(
     comparables: pd.DataFrame,
     *,
     target_latitude: float,
     target_longitude: float,
-    fetch_tiles: bool = False,
+    fetch_tiles: bool = True,
 ) -> tuple[bytes, str]:
-    """Renderiza pontos sobre grade local, sem qualquer consulta externa."""
+    """Renderiza o avaliando e os comparáveis sobre o CARTO Positron."""
     target_latitude = float(target_latitude)
     target_longitude = float(target_longitude)
     valid = (
@@ -517,6 +507,11 @@ def render_comparables_map_image(
         zip(mapped["latitude"].astype(float), mapped["longitude"].astype(float))
     )
     display_zoom = _choose_zoom(points)
+    # O tileset vetorial oficial do CARTO é publicado até o zoom 14. Em níveis
+    # maiores, o tile-pai é ampliado como vetor para preservar o enquadramento.
+    tile_zoom = min(math.floor(display_zoom), MAX_VECTOR_TILE_ZOOM)
+    tile_scale = 2 ** (display_zoom - tile_zoom)
+    rendered_tile_size = TILE_SIZE_PX * tile_scale
     global_pixels = [
         _mercator_xy(lat, lon, display_zoom) for lat, lon in points
     ]
@@ -524,16 +519,51 @@ def render_comparables_map_image(
     center_y = (min(y for _, y in global_pixels) + max(y for _, y in global_pixels)) / 2
     viewport_left = center_x - MAP_WIDTH_PX / 2
     viewport_top = center_y - MAP_HEIGHT_PX / 2
+    first_tile_x = math.floor(viewport_left / rendered_tile_size)
+    last_tile_x = math.floor(
+        (viewport_left + MAP_WIDTH_PX) / rendered_tile_size
+    )
+    first_tile_y = math.floor(viewport_top / rendered_tile_size)
+    last_tile_y = math.floor(
+        (viewport_top + MAP_HEIGHT_PX) / rendered_tile_size
+    )
+    tile_coordinates = [
+        (x, y)
+        for x in range(first_tile_x, last_tile_x + 1)
+        for y in range(first_tile_y, last_tile_y + 1)
+    ]
+
     image = _fallback_map(MAP_WIDTH_PX, MAP_HEIGHT_PX)
-    # fetch_tiles é mantido por compatibilidade, mas não habilita rede.
+    loaded_tiles = 0
+    if fetch_tiles and len(tile_coordinates) <= MAX_TILE_REQUESTS:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(_fetch_vector_tile, tile_zoom, x, y)
+                for x, y in tile_coordinates
+            ]
+            for future in as_completed(futures):
+                tile_x, tile_y, tile_bytes = future.result()
+                if tile_bytes is None:
+                    continue
+                destination_x = int(
+                    tile_x * rendered_tile_size - viewport_left
+                )
+                destination_y = int(
+                    tile_y * rendered_tile_size - viewport_top
+                )
+                try:
+                    _render_vector_tile(
+                        image,
+                        tile_bytes,
+                        destination_x=destination_x,
+                        destination_y=destination_y,
+                        tile_size_px=rendered_tile_size,
+                    )
+                    loaded_tiles += 1
+                except Exception:
+                    continue
+
     draw = ImageDraw.Draw(image, "RGBA")
-    scale = TILE_SIZE_PX * 2 ** display_zoom
-    map_center_lon = center_x / scale * 360 - 180
-    map_center_lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * center_y / scale))))
-    parcels, parcel_note = query_parcels(viewport_bounds(
-        map_center_lat, map_center_lon, display_zoom, MAP_WIDTH_PX, MAP_HEIGHT_PX,
-    ))
-    _fill_parcel_polygons(image, parcels, display_zoom, viewport_left, viewport_top)
     marker_font = _map_font(21, bold=True)
     legend_font = _map_font(17)
     attribution_font = _map_font(14)
@@ -631,7 +661,12 @@ def render_comparables_map_image(
 
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
-    source_note = "Modo local obrigatório. " + parcel_note
+    if loaded_tiles == len(tile_coordinates) and loaded_tiles > 0:
+        source_note = "Fundo: Claro - CARTO Positron (tiles vetoriais oficiais)."
+    elif loaded_tiles > 0:
+        source_note = "Fundo: Claro - CARTO Positron (tiles parcialmente disponíveis)."
+    else:
+        source_note = "Fundo CARTO Positron indisponível; grade neutra usada como contingência."
     return output.getvalue(), source_note
 
 
@@ -778,7 +813,7 @@ def build_inference_report_pdf(
     reference_area_column: str | None,
     logo_path: str | Path | None = None,
     generated_at: datetime | None = None,
-    fetch_map_tiles: bool = False,
+    fetch_map_tiles: bool = True,
 ) -> bytes:
     """Gera o relatório sintético de inferência da VERA em memória."""
     if neighbors.empty:

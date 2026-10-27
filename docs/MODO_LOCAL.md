@@ -1,97 +1,109 @@
-# Instalação corporativa sem internet
+# VERA: Eixos locais, mapas CARTO e fallback Nominatim
 
-A aplicação opera obrigatoriamente sem serviços externos. O servidor processa
-as planilhas e o navegador acessa apenas o servidor corporativo. Não existe
-configuração para reativar Nominatim, downloads de base ou mapas externos.
-Os lotes fiscais são desenhados a partir da base instalada `assets/lotes_fiscais.sqlite`,
-com manifesto `assets/lotes_fiscais.json` e módulo `local_parcel_map.py`.
-Os parâmetros antigos `fetch_tiles` e `fetch_map_tiles` permanecem aceitos para
-compatibilidade e não habilitam rede, mesmo quando verdadeiros.
+Desde a versão 1.19.2, os mapas e a geocodificação retomam os serviços online
+anteriores. A base dos Eixos permanece incorporada ao VERA. A aplicação não
+consulta o Hugging Face nem baixa shapefiles em execução.
 
-## Preparação da distribuição
+## Fluxo
 
-Em uma máquina de preparação conectada, com o mesmo sistema, arquitetura e
-versão Python do servidor, obtenha o repositório completo. A base de Porto
-Alegre está em `assets/eixos_poa/`, fora da pasta pública `static/`.
-Os quatro arquivos são conferidos pelos hashes SHA-256 definidos no código.
-Sua origem é a base Eixos do Space `fschwartzer/Geocode`, já utilizada pelo projeto;
-esta mudança preserva os mesmos arquivos e não altera a interpolação.
+1. Coordenadas fornecidas na planilha ou formulário continuam utilizáveis.
+2. Endereços de Porto Alegre usam primeiro a correspondência do logradouro e
+   a interpolação do número no eixo viário local.
+3. Quando o eixo não resolve o endereço, a aplicação consulta Nominatim online.
+   Mantém cache, timeout e intervalo mínimo de 1,05 s no limitador. Endereços
+   resolvidos localmente não são enviados ao Nominatim.
+4. O mapa da tela usa CARTO Positron por padrão, com OpenStreetMap e fundo
+   neutro como alternativas. O PDF usa tiles vetoriais CARTO e registra a
+   contingência de grade neutra quando os tiles não estão disponíveis.
 
-O arquivo `requirements-local.lock.txt` fixa a distribuição validada em Windows
-x64/Python 3.14. Para outra plataforma, valide a compatibilidade antes de distribuir.
-Prepare os pacotes previamente, sem instalar nada durante a execução do aplicativo:
+Nominatim recebe os endereços consultados. O navegador solicita mapas
+CARTO/OpenStreetMap; o servidor solicita tiles CARTO para o PDF. Esses serviços
+exigem rede. O cálculo e o geocodificador dos Eixos continuam locais.
+Estatísticas de uso do Streamlit permanecem desativadas.
+
+## Recursos instalados
+
+- `app.py`, módulos de núcleo/schema e `vera_pdf_report.py`;
+- `geocodificador_porto_alegre.py` e `siri_export_adapter.py`;
+- `assets/eixos_poa/Eixos.shp`, `.shx`, `.dbf` e `.prj`;
+- `static/vera_header.png` e `.streamlit/config.toml`;
+- dependências de `requirements.txt` ou versões de `requirements-local.lock.txt`;
+- `scripts/verify_local_install.py`.
+
+O verificador carrega os Eixos após validar os quatro hashes SHA-256 definidos
+no geocodificador. Base ausente/corrompida nunca é baixada automaticamente.
+Na interface, há aviso explícito antes do fallback Nominatim. Reinstale a base
+copiando os quatro arquivos íntegros da distribuição do VERA.
+Os Eixos usam TM-POA, transformado em WGS84 para as coordenadas resultantes.
+Lotes fiscais não são carregados pelos mapas nem exigidos pelo verificador.
+Seus utilitários/dados históricos permanecem no repositório sem dependência
+do fluxo atual e sem participação no cálculo de estimativas.
+
+## Instalação
+
+Na raiz do projeto, em ambiente virtual exclusivo:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe scripts/verify_local_install.py
+.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Para preparar dependências previamente, use uma máquina conectada com o mesmo
+sistema, arquitetura e Python do servidor:
 
 ```powershell
 python -m pip download --only-binary=:all: -r requirements-local.lock.txt -d wheelhouse
 ```
 
-Transfira a pasta do aplicativo, a base e `wheelhouse` pelo canal corporativo aprovado.
-O diretório de pacotes é específico da plataforma e não é versionado no Git.
-
-## Instalação no servidor isolado
-
-Execute na raiz do projeto, em ambiente virtual exclusivo:
+Transfira os pacotes e instale no servidor:
 
 ```powershell
-python -m venv .venv
 .venv\Scripts\python.exe -m pip install --no-index --find-links=wheelhouse -r requirements-local.lock.txt
-.venv\Scripts\python.exe scripts/verify_local_install.py
-.venv\Scripts\python.exe -m streamlit run app.py --server.address=127.0.0.1
 ```
 
-Use o proxy HTTPS/autenticação da organização para encaminhar o acesso corporativo
-ao servidor. Se a infraestrutura exigir acesso direto pela rede, configure o endereço
-de escuta e as regras de firewall conforme a política interna. Preserve as proteções
-CORS/XSRF padrão do Streamlit. A configuração do projeto desativa estatísticas de uso.
-Execute sempre a partir da raiz, para carregar `.streamlit/config.toml`.
+O lock corresponde à distribuição Windows x64/Python 3.14 validada. Instalação
+por wheels não torna os mapas e o fallback Nominatim offline. Para uso corporativo,
+use HTTPS/autenticação e regras de rede da organização, mantendo CORS/XSRF.
+Inicie a aplicação na raiz para carregar a configuração do projeto.
 
-Bloqueie a saída à internet no servidor e nas estações durante a homologação.
-Teste upload, endereço local, endereço não resolvido, coordenadas explícitas,
-estimativa, mapa interativo e download do PDF. Confirme no navegador que não há
-requisições para domínios externos. O bloqueio de saída também é a garantia de
-infraestrutura contra comportamentos futuros de dependências.
+## Verificação e metodologia
 
-## Comportamento e limites
+`python -m unittest discover -s tests -v`
 
-- Mapas mostram lotes em cinza claro sólido, com contornos e vazios internos
-  preservados, mantendo pontos e comparáveis destacados.
-  A tela permite selecionar lotes fiscais ou fundo neutro. Não há tiles externos.
-- Base ausente ou com hash inválido gera mensagem explícita; não ocorre download.
-- Endereço não resolvido conserva o motivo da falha. Informe coordenadas ou escolha
-  explicitamente ignorar localização; o sistema não troca sozinho para busca online.
-- Geocodificação cobre Porto Alegre, com as limitações da base e da interpolação.
-- O núcleo e seus parâmetros não mudaram. Com coordenadas idênticas, o cálculo é o
-  mesmo. A redução de cobertura pode afetar composição da amostra, COD, PRD e
-  regressividade: não constitui evidência de melhora ou piora sem avaliação própria.
+Os testes simulam Nominatim e CARTO para verificar o fluxo sem enviar endereços
+nem depender da rede. Conferem geocodificação local, fallback, integridade e
+que os Eixos não têm rotina de download.
+Coordenadas iguais preservam o cálculo. Recuperar cobertura pelo Nominatim pode
+mudar comparáveis e trazer erros de localização/viés espacial. Não houve ajuste
+de pesos ou modelo; sem nova feature, tuning ou leakage/overfitting adicional.
+Não se presume melhora de COD, PRD ou regressividade sem avaliação independente.
 
-Verificação reproduzível: `python -m unittest discover -s tests -v`.
+## Exportação SIRI com cabeçalhos camelCase
 
-## Base visual de lotes fiscais
+O importador reconhece a exportação com `fonteTransacao`, `finalidadeNmeSiat`,
+`finalidadeNmeCrawlerSiri` e campos PMI/Crawler. Preserva todas as colunas originais
+(inclusive metadados que não entram no KNN) e acrescenta aliases de compatibilidade:
 
-Fonte: extração SMAMUS `01_PUBLICACOES/dmweb_lotes_fiscais/FeatureServer/0`,
-coletada em 20/10/2026. O catálogo da extração confirma EPSG:4326 e o hash
-`37b5bd9bc3b7df6e9c21271c8e43b963a1570d6e0b59c96eb280cedd427d8a33`.
-São 283.290 polígonos, incluindo multipolígonos e anéis internos. As coordenadas
-são preservadas integralmente; os atributos cadastrais foram removidos da cópia
-visual. O original no Playground permanece intacto. Coleta não comprova vigência
-nem cobertura completa; os contornos não certificam a inscrição dos pontos.
+| Informação | Regra da exportação |
+|---|---|
+| Tipo | `fonteTransacao`, distinguindo Oferta/Guia ITBI |
+| Finalidade | SIAT com fallback PMI; tipo do Crawler para ofertas, com auditoria de conflitos existente |
+| Preço da guia | Somente `valorGuiaTotalDeclarado`, sem substituição pelo atribuído |
+| Área territorial da guia | Somente `guiaAreaTerrTransmitida`, inclusive em transmissões parciais |
+| Preço da oferta | `valorOfertaCrawler`, depois `valorOfertaPmi` |
+| Área territorial da oferta | Privativa PMI/SIAT; na ausência, lote fiscal PMI/SIAT fora de condomínio |
+| Área em condomínio | Área da unidade; não substitui pela área coletiva |
+| Área construída | Total Crawler/PMI ou SIAT; guias priorizam `guiaAcoTransmitida` |
+| Área privativa | `acoPrivativaCrawler` / `acoPrivativaPmi` |
+| Coordenadas | Par válido Crawler, depois par válido PMI; nunca combina fontes |
+| Endereço | Logradouro e número selecionados da mesma fonte |
+| Inscrição/IDs | Aliases para deduplicação por inscrição/preço e identificadores do anúncio |
+| Datas | Encaminhamento/registro mantidos como disponibilidade cadastral; sem inferir ano da construção |
 
-O índice SQLite/RTree consulta retângulos em graus WGS84, sem medir distância,
-intersectar alvos ou criar variáveis do modelo. O custo de leitura depende do
-número de lotes do recorte. A aplicação carrega todos os polígonos encontrados,
-sem corte por quantidade. Recortes amplos podem exigir mais tempo e memória.
-No mapa interativo, “Aproximação cartográfica” ajusta apenas o enquadramento;
-os contornos são carregados no servidor
-para a região dos pontos e precisam ser recarregados ao navegar para fora dela.
-No PDF, o recorte acompanha o enquadramento dos pontos. Base ausente/corrompida
-ou região sem lotes resulta em pontos sobre fundo neutro e motivo explícito.
-
-Repreparação offline a partir do GeoJSON original, em um destino novo:
-
-```powershell
-python scripts/prepare_parcel_map.py CAMINHO_DO_GEOJSON assets/lotes_fiscais.sqlite
-```
-
-A preparação usa apenas a biblioteca padrão e conserva o hash da fonte e o hash
-da base preparada no manifesto. O verificador de instalação confere a integridade.
-Não há influência sobre COD, PRD, regressividade, pesos ou seleção do KNN.
+Registros sem preço declarado ou área transmitida válida não recebem valor
+atribuído ou área total fiscal como substitutos. Campos de auditoria indicam
+origem do preço, origem das coordenadas e regra de área. Transmissões parciais
+são contadas nas notas para revisão de direitos e comparabilidade. Os campos
+não usados pelo estimador continuam na base e nas exportações de diagnóstico.

@@ -19,7 +19,7 @@ para planilhas do SIRI ou bases de anúncios com cabeçalhos usuais.
 | **Entrada** | Planilhas Excel nos formatos `.xlsx`, `.xlsm` ou `.xls` |
 | **Saída** | Estimativa, comparáveis, mapa e relatórios Excel/PDF |
 | **Abrangência** | Imóveis prediais e territoriais |
-| **Versão atual** | LITE 1.19.1 · núcleo 6.12.0 |
+| **Versão atual** | LITE 1.19.2 · núcleo 6.12.0 |
 
 ## O que o aplicativo faz
 
@@ -63,7 +63,7 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - área do terreno como atributo físico opcional de casas e outros imóveis
   térreos, ativada por padrão somente quando a cobertura alcança o K inicial;
 - geocodificação por endereço pelo eixo viário local de Porto Alegre,
-  sem fallback externo;
+  com fallback Nominatim;
 - modo sem localização, com peso físico renormalizado para 100%;
 - K adaptativo e perfis de parâmetros por finalidade;
 - combinação de distância física e distância geográfica;
@@ -75,7 +75,7 @@ da unidade. A regra aplicada fica registrada na coluna derivada de auditoria.
 - controle de conflitos tipológicos;
 - limite para o peso individual de cada comparável;
 - mapa interativo do avaliando e dos comparáveis;
-- relatório sintético de inferência em PDF, com mapa com lotes fiscais locais,
+- relatório sintético de inferência em PDF, com mapa CARTO Positron,
   valor unitário, valor total, COD local, confiança e comparáveis;
 - alertas de extrapolação, cobertura e concentração dos pesos;
 - exportação de comparáveis, diagnósticos, exclusões e alertas para Excel.
@@ -116,9 +116,9 @@ deve ser inteiro entre 1500 e o ano corrente.
 | Interface web | Streamlit 1.47+ |
 | Manipulação de dados | pandas e NumPy |
 | Leitura e escrita de Excel | openpyxl e xlrd |
-| Mapas e visualizações | Plotly / MapLibre com lotes fiscais locais |
+| Mapas e visualizações | Plotly / MapLibre e CARTO Positron |
 | Relatório PDF | ReportLab, Pillow e mapbox-vector-tile |
-| Geocodificação | eixo TM-POA instalado, pyproj e RapidFuzz |
+| Geocodificação | eixo TM-POA instalado, pyproj, RapidFuzz e Nominatim/geopy |
 | Testes | `unittest` da biblioteca padrão |
 
 As versões aceitas das bibliotecas estão declaradas em `requirements.txt`.
@@ -132,16 +132,21 @@ As versões aceitas das bibliotecas estão declaradas em `requirements.txt`.
 - navegador web atualizado;
 - Git, caso o projeto seja obtido diretamente do repositório.
 
-Não é necessário banco de dados, servidor externo ou GPU. O cálculo é local.
-O modo local é obrigatório: não há download automático, fallback Nominatim
-ou tiles externos. A base `assets/eixos_poa/` acompanha o repositório e é
-validada por SHA-256 antes da geocodificação. Base ausente ou corrompida gera
-erro explícito. Endereços fora da cobertura de Porto Alegre ou não resolvidos
-exigem coordenadas informadas; ignorar localização continua sendo escolha explícita.
-Os mapas interativo e PDF usam contornos dos lotes fiscais SMAMUS, pontos e comparáveis locais.
+Não é necessário banco de dados ou GPU. O servidor do VERA e o cálculo podem ser locais.
+Os quatro arquivos do eixo viário de Porto Alegre acompanham o VERA em
+`assets/eixos_poa/` e são validados por SHA-256. A aplicação não consulta o
+Hugging Face nem baixa esses arquivos em execução. Base ausente ou corrompida
+produz aviso explícito; sua reinstalação é feita pela distribuição do aplicativo.
 
-Consulte [a instalação corporativa sem internet](docs/MODO_LOCAL.md) para preparar
-as dependências, instalar sem consultar índices e validar os recursos locais.
+A geocodificação tenta primeiro o eixo local. Endereços não resolvidos seguem
+para o Nominatim online, com intervalo entre consultas. O mapa interativo usa
+CARTO Positron por padrão, com OpenStreetMap e fundo neutro como alternativas.
+O PDF volta a usar os tiles vetoriais CARTO, com grade neutra se indisponíveis.
+As consultas Nominatim enviam o endereço ao serviço; mapas externos exigem
+acesso de rede. O cálculo e a leitura dos Eixos continuam locais.
+
+Consulte [a instalação e os serviços externos](docs/MODO_LOCAL.md). Os lotes
+fiscais da versão anterior não são carregados pelos mapas nem exigidos na instalação.
 
 ### Hardware
 
@@ -177,7 +182,7 @@ source .venv/bin/activate
 ```
 
 Prepare previamente a pasta `wheelhouse`, conforme a
-[instalação corporativa sem internet](docs/MODO_LOCAL.md). No servidor isolado,
+[instalação com dependências previamente obtidas](docs/MODO_LOCAL.md). No servidor,
 instale as dependências, valide os recursos e inicie o aplicativo:
 
 ```powershell
@@ -208,6 +213,7 @@ estimador_knn_siri/
 ├── app.py                         # interface e orquestração
 ├── estimador_knn_core_v6120.py    # cálculo e diagnósticos do KNN
 ├── estimador_knn_schema_v6120.py  # normalização do schema SIRI
+├── siri_export_adapter.py         # aliases da exportação SIRI camelCase
 ├── geocodificador_porto_alegre.py # geocodificação pelo eixo do Space Geocode
 ├── vera_pdf_report.py             # relatório PDF e mapa estático dos comparáveis
 ├── requirements.txt               # dependências de execução
@@ -230,10 +236,10 @@ repositório são:
 - `estimador_knn_core_v6120.py`;
 - `estimador_knn_schema_v6120.py`;
 - `geocodificador_porto_alegre.py`;
+- `siri_export_adapter.py`;
 - `vera_pdf_report.py`;
 - `requirements.txt`;
 - `requirements-local.lock.txt`;
-- `local_parcel_map.py`, `assets/lotes_fiscais.sqlite` e `assets/lotes_fiscais.json`;
 - `assets/eixos_poa/` com os quatro arquivos Eixos;
 - `static/vera_header.png`;
 - `scripts/verify_local_install.py`;
@@ -282,3 +288,9 @@ PRD, regressividade por faixa de valor e estabilidade espacial.
 - `README_DEPLOY.txt`: lista mínima para publicação;
 - `docs/HISTORICO_VERSOES.md`: histórico funcional até a versão 1.19.0;
 - `artifacts/calibration/`: parâmetros e relatórios de calibrações anteriores.
+
+A exportação SIRI com cabeçalhos camelCase também é reconhecida. Guias usam
+`valorGuiaTotalDeclarado` e `guiaAreaTerrTransmitida`, conforme escolha do usuário.
+Colunas originais são preservadas e aliases de preço, área, endereço, inscrição,
+datas e pares de coordenadas mantêm a compatibilidade do estimador. Veja as
+[regras completas de importação](docs/MODO_LOCAL.md#exportação-siri-com-cabeçalhos-camelcase).
