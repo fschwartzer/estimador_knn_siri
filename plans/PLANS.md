@@ -199,7 +199,7 @@ alterar o relatório PDF, dados geográficos ou núcleo de estimativas.
 1. [concluído] Recuperar comportamento anterior de mapas e geocodificação.
 2. [concluído] Manter Eixos instalados com hashes; nenhum download do Hugging Face.
 3. [concluído] Atualizar testes, distribuição e documentação; validar UI/PDF/fallback.
-4. [pendente] Publicar e incorporar no GitHub após validação.
+4. [concluído] Publicar entrega validada no GitHub após revisão.
 
 Decisão do usuário: mapas externos CARTO (e OSM como alternativa) e fallback
 Nominatim novamente permitidos; não é mais modo totalmente offline obrigatório.

@@ -213,6 +213,7 @@ estimador_knn_siri/
 ├── app.py                         # interface e orquestração
 ├── estimador_knn_core_v6120.py    # cálculo e diagnósticos do KNN
 ├── estimador_knn_schema_v6120.py  # normalização do schema SIRI
+├── siri_export_adapter.py         # aliases da exportação SIRI camelCase
 ├── geocodificador_porto_alegre.py # geocodificação pelo eixo do Space Geocode
 ├── vera_pdf_report.py             # relatório PDF e mapa estático dos comparáveis
 ├── requirements.txt               # dependências de execução
